@@ -14,7 +14,7 @@ setup(name='MutationInfo',
       install_requires=[
             'biopython',
             'appdirs',
-            'hgvs',
+            'hgvs>=0.4,<0.5',
       ],
       packages=['MutationInfo'],
 )

@@ -1,13 +1,33 @@
 
 import os
 import re
+import sys
 import json
+import time
 import logging
+import urllib2
 
 from Bio import Entrez
 from appdirs import *
 
-#Entrez.email = global_vars['email']
+# Importing: https://bitbucket.org/biocommons/hgvs
+import hgvs as hgvs_biocommons
+import hgvs.parser as hgvs_biocommons_parser
+
+# Importing https://github.com/counsyl/hgvs 
+# How to setup data files : https://github.com/counsyl/hgvs/blob/master/examples/example1.py 
+import pyhgvs as hgvs_counsyl
+from pygr.seqdb import SequenceFileDB
+# Use this package to retrieve genomic position for known refSeq entries.
+# MutationInfo comes to the rescue when pyhgvs fails
+
+# For progress bar..
+try:
+	from IPython.core.display import clear_output
+	have_ipython = True
+except ImportError:
+	have_ipython = False
+
 
 __docformat__ = 'reStructuredText'
 
@@ -15,6 +35,7 @@ __docformat__ = 'reStructuredText'
 TODO: 
 * More documentation   http://thomas-cokelaer.info/tutorials/sphinx/docstring_python.html 
 * Fix setup.py http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
+* Add hgvs_counsyl installation and automate these steps: https://github.com/counsyl/hgvs/blob/master/examples/example1.py  
 """
 
 class MutationInfo(object):
@@ -22,10 +43,10 @@ class MutationInfo(object):
 
 	"""
 
-
 	_properties_file = 'properties.json'
+	biocommons_parser = hgvs_biocommons_parser.Parser() # https://bitbucket.org/biocommons/hgvs 
 
-	def __init__(self, local_directory=None, email=None):
+	def __init__(self, local_directory=None, email=None, genome='hg19'):
 
 		#Get local directory
 		if local_directory is None:
@@ -53,8 +74,26 @@ class MutationInfo(object):
 		Entrez.email = self.properties['email']
 		print 'Using email for accessing Entrez: %s' % (str(Entrez.email))
 
+		self.counsyl_hgvs = Counsyl_HGVS(
+			local_directory = self.local_directory,
+			genome = genome,
+			)
+
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
+
+	@staticmethod
+	def biocommons_parse(variant):
+		"""
+		Parse a variant with the biocommons parser
+
+		:param variant: The hgvs name of the variant
+		"""
+		try:
+			return MutationInfo.biocommons_parser.parse_hgvs_variant(variant)
+		except hgvs_biocommons.exceptions.HGVSParseError as e:
+			logging.warning('Could not parse variant:  %s . Error: %s' % (str(variant), str(e)))
+			return None
 
 	@staticmethod
 	def fuzzy_hgvs_corrector(variant, transcript=None, ref_type=None):
@@ -100,21 +139,56 @@ class MutationInfo(object):
 			logging.warning('Variant: %s  . "/" found suggesting that this contains 2 variants' % (new_variant))
 			new_variant_1 = re.sub(r'([ACGT])>([ACGT])/([ACGT])', r'\1>\2', new_variant)
 			new_variant_2 = re.sub(r'([ACGT])>([ACGT])/([ACGT])', r'\1>\3', new_variant)
-			return [fuzzy_hgvs_corrector(new_variant_1), fuzzy_hgvs_corrector(new_variant_2)]
+			return [
+				MutationInfo.fuzzy_hgvs_corrector(new_variant_1), 
+				MutationInfo.fuzzy_hgvs_corrector(new_variant_2)]
+
+		# Case 3
+		# -1126(C>T) 
+		# The variant contains parenthesis in the substitition
+		search = re.search(r'[\d]+\([ACGT]>[ACGT]\)', new_variant)
+		if search:
+			logging.warning('Variant: %s   . Contains parenthesis around substitition. Removing the parenthesis' % (new_variant))
+			new_variant = re.sub(r'([\d]+)\(([ACGT])>([ACGT])\)', r'\1\2>\3', new_variant)
 
 		return new_variant
 
+	def _get_info_rs(self, variant):
+		raise NotImplementedError('Sorry.. Not yet implemented')
 
-	def get_info(variant):
+
+	def get_info(self, variant, **kwargs):
+		"""
+		Doing our best to get the most out of a variant name
+
+		:param variant: A variant
+
 		"""
 
-		:param variant: A NCBI access ID (example: 'NM_000463.2')
+		#Is this an rs variant?
+		match = re.match(r'rs[\d]+', variant)
+		if match:
+			# This is an rs variant 
+			return self._get_info_rs()
 
-		"""
+		#Is this an hgvs variant?
+		hgvs = MutationInfo.biocommons_parse(variant)
+		if hgvs is None:
+			#Parsing failed. Trying to fix possible problems
+			new_variant = MutationInfo.fuzzy_hgvs_corrector(variant, **kwargs)
+			if type(new_variant) is list:
+				return [get_info(v) for v in new_variant] 
+			elif type(new_variant) is str:
+				hgvs = MutationInfo.biocommons_parse(new_variant)
+
+		if hgvs is None:
+			#Parsing failed again.. Nothing to do..
+			logging.error('Failed to parse variant: %s . Returning None' % (variant))
+			return None
+
+		#Converting the variant to VCF 
 
 
-		
-		pass
 
 	def _get_fasta_from_nucleotide_entrez(self, ncbi_access_id, pure=False): # For example NG_000004.3
 		'''
@@ -181,7 +255,39 @@ class MutationInfo(object):
 
 		return directory
 
+class Counsyl_HGVS(object):
+	'''
+	Wrapper class for pyhgvs https://github.com/counsyl/hgvs 
+	'''
 
+	fasta_url_pattern = 'http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz'
+
+	def __init__(self, local_directory, genome='hg19'):
+
+		self.local_directory = local_directory
+
+		# Check genome option
+		if re.match(r'hg[\d]+', genome) is None:
+			raise ValueError('Parameter genome should follow the patern: hgDD (for example hg18, hg19, hg38) ')
+
+		#Init counsyl PYHGVS
+		fasta_directory = os.path.join(self.local_directory, genome )
+		fasta_filename = os.path.join(fasta_directory, genome + '.fa')
+		if not Utils.file_exists(fasta_filename):
+			print 'Could not find fasta filename:', fasta_filename
+			fasta_url = Counsyl_HGVS.fasta_url_pattern.format(genome=genome)
+			print 'Downloading from:', fasta_url
+
+			Utils.mkdir_p(fasta_directory)
+			Utils.download(fasta_url, fasta_filename)
+
+		else:
+			print 'Found fasta filename:', fasta_filename
+
+		a=1/0
+
+	def install_fasta(self, fasta_filename):
+		Utils.download()
 
 class Utils(object):
 	'''
@@ -238,11 +344,88 @@ class Utils(object):
 		with open(filename, 'w') as f:
 			f.write(json.dumps(data, indent=4) + '\n')
 
+	@staticmethod
+	def download(url, filename=None):
+		'''
+		http://www.pypedia.com/index.php/download
+		'''
+		if not filename:
+			file_name = url.split('/')[-1]
+		else:
+			file_name = filename
+			
+		u = urllib2.urlopen(url)
+		f = open(file_name, 'wb')
+		meta = u.info()
+		try:
+			file_size = int(meta.getheaders("Content-Length")[0])
+			pb = ProgressBar(file_size, 'Progress')
+		except IndexError:
+			file_size = None
+			print 'Could not determine file size'
+		print("Downloading: {0} Bytes: {1}".format(url, file_size))
+
+		file_size_dl = 0
+		block_sz = 8192
+		while True:
+			buffer = u.read(block_sz)
+			if not buffer:
+				break
+
+			file_size_dl += len(buffer)
+			f.write(buffer)
+			if file_size:
+				pb.animate_ipython(file_size_dl)
+		f.close()
+
+class ProgressBar:
+	'''
+	http://www.pypedia.com/index.php/ProgressBar
+	'''
+	def __init__(self, iterations, msg = ''):
+		self.iterations = iterations
+		self.prog_bar = '[]'
+		self.msg = msg
+		self.fill_char = '*'
+		self.width = 40
+		self.__update_amount(0)
+		if have_ipython:
+			self.animate = self.animate_ipython
+		else:
+			self.animate = self.animate_noipython
+
+	def animate_ipython(self, iter):
+		try:
+			clear_output()
+		except Exception:
+			# terminal IPython has no clear_output
+			pass
+		print '\r', self,
+		sys.stdout.flush()
+		self.update_iteration(iter + 1)
+
+	def update_iteration(self, elapsed_iter):
+		self.__update_amount((elapsed_iter / float(self.iterations)) * 100.0)
+		self.prog_bar += '  %d of %s complete' % (elapsed_iter, self.iterations)
+
+	def __update_amount(self, new_amount):
+		percent_done = int(round((new_amount / 100.0) * 100.0))
+		all_full = self.width - 2
+		num_hashes = int(round((percent_done / 100.0) * all_full))
+		self.prog_bar = self.msg + '[' + self.fill_char * num_hashes + ' ' * (all_full - num_hashes) + ']'
+		pct_place = (len(self.prog_bar) / 2) - len(str(percent_done))
+		pct_string = '%d%%' % percent_done
+		self.prog_bar = self.prog_bar[0:pct_place] +             (pct_string + self.prog_bar[pct_place + len(pct_string):])
+
+	def __str__(self):
+		return str(self.prog_bar)
+
 def test():
 	'''
 	Testing cases
 	'''
 
+	print '------FUZZY HGVS CORRECTOR---------'
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C')
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C', transcript='NM_001042351.1')
 	try: 
@@ -250,3 +433,16 @@ def test():
 	except Exception as e:
 		print 'Exception:', str(e)
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C', transcript='NM_001042351.1', ref_type='c')
+
+	print MutationInfo.fuzzy_hgvs_corrector('1387C->T/A', transcript='NM_001042351.1', ref_type='c')
+
+	print MutationInfo.fuzzy_hgvs_corrector('-1923(A>C)', transcript='NT_005120.15', ref_type='g')
+
+	print '--------HGVS PARSER-----------------'
+	print MutationInfo.biocommons_parse('unparsable')
+
+	print '--------GET INFO--------------------'
+	mi = MutationInfo()
+	print mi.get_info('NM_006446.4:c.1198T>G')
+
+	print 'TESTS FINISHED'
