@@ -2,9 +2,14 @@
 import os
 import re
 import sys
+import glob
+import gzip
 import json
 import time
+import errno
+import shutil
 import logging
+import tarfile 
 import urllib2
 
 from Bio import Entrez
@@ -17,6 +22,7 @@ import hgvs.parser as hgvs_biocommons_parser
 # Importing https://github.com/counsyl/hgvs 
 # How to setup data files : https://github.com/counsyl/hgvs/blob/master/examples/example1.py 
 import pyhgvs as hgvs_counsyl
+import pyhgvs.utils as hgvs_counsyl_utils
 from pygr.seqdb import SequenceFileDB
 # Use this package to retrieve genomic position for known refSeq entries.
 # MutationInfo comes to the rescue when pyhgvs fails
@@ -36,6 +42,7 @@ TODO:
 * More documentation   http://thomas-cokelaer.info/tutorials/sphinx/docstring_python.html 
 * Fix setup.py http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
 * Add hgvs_counsyl installation and automate these steps: https://github.com/counsyl/hgvs/blob/master/examples/example1.py  
+* Maybe import inline for performance reasons? http://stackoverflow.com/questions/477096/python-import-coding-style 
 """
 
 class MutationInfo(object):
@@ -187,7 +194,7 @@ class MutationInfo(object):
 			return None
 
 		#Converting the variant to VCF 
-
+		print self.counsyl_hgvs.hgvs_to_vcf(variant)
 
 
 	def _get_fasta_from_nucleotide_entrez(self, ncbi_access_id, pure=False): # For example NG_000004.3
@@ -261,33 +268,70 @@ class Counsyl_HGVS(object):
 	'''
 
 	fasta_url_pattern = 'http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz'
+	refseq_url = 'https://github.com/counsyl/hgvs/raw/master/pyhgvs/data/genes.refGene'
 
 	def __init__(self, local_directory, genome='hg19'):
 
 		self.local_directory = local_directory
+		self.genome = genome
 
 		# Check genome option
 		if re.match(r'hg[\d]+', genome) is None:
 			raise ValueError('Parameter genome should follow the patern: hgDD (for example hg18, hg19, hg38) ')
 
 		#Init counsyl PYHGVS
-		fasta_directory = os.path.join(self.local_directory, genome )
-		fasta_filename = os.path.join(fasta_directory, genome + '.fa')
-		if not Utils.file_exists(fasta_filename):
-			print 'Could not find fasta filename:', fasta_filename
-			fasta_url = Counsyl_HGVS.fasta_url_pattern.format(genome=genome)
-			print 'Downloading from:', fasta_url
-
-			Utils.mkdir_p(fasta_directory)
-			Utils.download(fasta_url, fasta_filename)
-
+		self.fasta_directory = os.path.join(self.local_directory, genome)
+		self.fasta_filename = os.path.join(self.fasta_directory, genome + '.fa')
+		self.refseq_filename = os.path.join(self.local_directory, 'genes.refGene')
+		if not Utils.file_exists(self.fasta_filename):
+			print 'Could not find fasta filename:', self.fasta_filename
+			_install_fasta_files()
 		else:
-			print 'Found fasta filename:', fasta_filename
+			print 'Found fasta filename:', self.fasta_filename
 
-		a=1/0
+		self.sequence_genome = SequenceFileDB(self.fasta_filename)
+		self._load_transcripts()
 
-	def install_fasta(self, fasta_filename):
-		Utils.download()
+	def hgvs_to_vcf(self, variant):
+		chrom, offset, ref, alt = hgvs_counsyl.parse_hgvs_name(
+			variant, self.sequence_genome, get_transcript=self._get_transcript)
+
+		return chrom, offset, ref, alt
+
+
+	def _load_transcripts(self):
+		with open(self.refseq_filename) as f:
+			self.transcripts = hgvs_counsyl_utils.read_transcripts(f)
+
+	def _get_transcript(self, name):
+			return self.transcripts.get(name)
+
+	def _install_fasta_files(self):
+		fasta_filename_tar_gz = os.path.join(fasta_directory, 'chromFa.tar.gz')
+		fasta_filename_tar = os.path.join(fasta_directory, 'chromFa.tar')
+		fasta_url = self.fasta_url_pattern.format(genome=self.genome)
+		print 'Downloading from:', fasta_url
+		print 'Downloading to:', fasta_filename_tar_gz
+
+		Utils.mkdir_p(fasta_directory)
+		Utils.download(fasta_url, fasta_filename_tar_gz)
+
+		print 'Unzipping to:', fasta_filename_tar
+		Utils.gunzip(fasta_filename_tar_gz, fasta_filename_tar)
+
+		print 'Untar to:', fasta_directory
+		Utils.untar(fasta_filename_tar, fasta_directory)
+
+		print 'Merging *.fa to %s.fa' % (self.genome)
+		all_fasta_filenames_glob = os.path.join(fasta_directory, 'chr*.fa')
+		all_fasta_filenames = glob.glob(all_fasta_filenames_glob)
+		Utils.cat_filenames(all_fasta_filenames, fasta_filename)
+
+		print 'Downloading refGene'
+		print 'Downloading from:', self.refseq_url
+		print 'Downloading to:', self.refseq_filename
+		Utils.download(self.refseq_url, self.refseq_filename)
+
 
 class Utils(object):
 	'''
@@ -377,6 +421,40 @@ class Utils(object):
 			if file_size:
 				pb.animate_ipython(file_size_dl)
 		f.close()
+
+	@staticmethod
+	def gunzip(compressed_filename, uncompressed_filename):
+		'''
+		unzips a gunzip file
+		https://docs.python.org/2/library/gzip.html
+		'''
+
+		with gzip.open(compressed_filename, 'rb') as f_out, open(uncompressed_filename, 'wb') as f_in:
+			shutil.copyfileobj(f_out, f_in)
+
+	@staticmethod
+	def untar(tar_filename, path):
+		'''
+		Untar a filename
+		https://docs.python.org/2/library/tarfile.html
+		'''
+
+		with tarfile.open(tar_filename) as tar:
+			tar.extractall(path=path)
+
+	@staticmethod
+	def cat_filenames(filenames, output_filename):
+		'''
+		Concat filenames
+		http://stackoverflow.com/questions/13613336/python-concatenate-text-files 
+		'''
+
+		with open(output_filename, 'w') as outfile:
+			for fname in filenames:
+				print 'Concatenating:', fname
+				with open(fname) as infile:
+					for line in infile:
+						outfile.write(line)
 
 class ProgressBar:
 	'''
