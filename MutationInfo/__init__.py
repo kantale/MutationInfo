@@ -238,6 +238,7 @@ class MutationInfo(object):
 		hgvs_type = hgvs.type
 		hgvs_position = hgvs.posedit.pos.start.base
 		hgvs_reference = hgvs.posedit.edit.ref
+		hgvs_alternative = hgvs.posedit.edit.alt
 
 		#Converting the variant to VCF 
 		#Try pyhgvs 
@@ -299,10 +300,10 @@ class MutationInfo(object):
 		blat_filename = self._create_blat_filename(hgvs_transcript, chunk_start, chunk_end)
 		logging.info('Variant: %s . blat results filename: %s' % (variant, blat_filename) )
 		if not Utils.file_exists(blat_filename):
-			logging.info('Variant: %s . blat filename does not exist. Requesting it from UCSC..')
+			logging.info('Variant: %s . Blat filename does not exist. Requesting it from UCSC..' % (variant) )
 			self._perform_blat(fasta_chunk, blat_filename)
 
-		logging.info('Variant: %s . blat filename exists (or created). Parsing it..')
+		logging.info('Variant: %s . Blat filename exists (or created). Parsing it..' % (variant))
 		blat = self._parse_blat_results_filename(blat_filename)
 
 		#Log some details regarding the blat results
@@ -316,14 +317,14 @@ class MutationInfo(object):
 		logging.info('Variant: %s . Blat alignment filename: %s' % (variant, blat_alignment_filename))
 
 		if not Utils.file_exists(blat_alignment_filename):
-			logging.info('Variant: %s . Blat alignment filename soes not exist. Creating it..' % (variant))
+			logging.info('Variant: %s . Blat alignment filename does not exist. Creating it..' % (variant))
 			blat_temp_alignment_filename = blat_alignment_filename + '.tmp'
-			logging.info('Variant: %s . Temporary blat alignment filename:' % (variant, blat_temp_alignment_filename))
+			logging.info('Variant: %s . Temporary blat alignment filename: %s' % (variant, blat_temp_alignment_filename))
 			logging.info('Variant: %s . Downloading Details url in Temporary blat alignment filename' % (variant))
-			Utils.download(details_url, blat_temp_alignment_filename)
-			logging.info('Variant: %s . Parsing temporary blat alignment filename')
+			Utils.download(blat_details_url, blat_temp_alignment_filename)
+			logging.info('Variant: %s . Parsing temporary blat alignment filename' % (variant))
 			with open(blat_temp_alignment_filename) as blat_temp_alignment_file:
-				blat_temp_alignment_soup =  BeautifulSoup(blat_temp_alignment_soup)
+				blat_temp_alignment_soup =  BeautifulSoup(blat_temp_alignment_file)
 			blat_real_alignment_url = 'https://genome.ucsc.edu/' + blat_temp_alignment_soup.find_all('frame')[1]['src'].replace('../', '')
 			logging.info('Variant: %s . Real blat alignment URL: %s' % (variant, blat_real_alignment_url))
 			blat_real_alignment_filename = blat_alignment_filename + '.html'
@@ -332,8 +333,8 @@ class MutationInfo(object):
 			Utils.download(blat_real_alignment_url, blat_real_alignment_filename)
 			logging.info('Variant: %s . Reading content from real alignment filename' % (variant))
 			with open(blat_real_alignment_filename) as blat_real_alignment_file:
-				# We have to define html.parser otherwise parsing is incomplete
-				blat_real_alignment_soup = BeautifulSoup(blat_real_alignment_file, parser='html.parser')
+				# We have to set html.parser otherwise parsing is incomplete
+				blat_real_alignment_soup = BeautifulSoup(blat_real_alignment_file, 'html.parser')
 				#Take the complete text
 				blat_real_alignment_text = blat_real_alignment_soup.text
 
@@ -342,6 +343,31 @@ class MutationInfo(object):
 				blat_alignment_file.write(blat_real_alignment_text)
 
 		logging.info('Variant: %s . blat alignment filename exists (or created)' % (variant))
+		human_genome_position, direction = self._find_alignment_position_in_blat_result(blat_alignment_filename, relative_pos, verbose=True)
+		logging.info('Variant: %s . Blat alignment position: %i, direction: %s' % (variant, human_genome_position, direction))
+
+		#Invert reference / alternative if sequence was located in negative strand 
+		if direction == '-':
+			hgvs_reference = self._inverse(hgvs_reference)
+			hgvs_alternative = self._inverse(hgvs_alternative)
+
+		ret = build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome)
+		return ret
+
+	@staticmethod
+	def _inverse(nucleotide):
+		inverter = {
+			'A' : 'T',
+			'T' : 'A',
+			'C' : 'G',
+			'G' : 'C',
+		}
+
+		if nucleotide is None:
+			return None
+
+		return ''.join([inverter[x] for x in nucleotide.upper()])
+
 
 	def _create_blat_filename(self, transcript, chunk_start, chunk_end):
 		return os.path.join(self.blat_directory, 
@@ -430,7 +456,7 @@ class MutationInfo(object):
 		r = requests.post(self.ucsc_blat_url, data=data)
 		logging.info('   ... Request is done')
 
-		with open(output_filename) as f:
+		with open(output_filename, 'w') as f:
 			f.write(r.text)
 
 		return True
@@ -447,14 +473,14 @@ class MutationInfo(object):
 		with open(input_filename) as f:
 			soup = BeautifulSoup(f)
 
-		header = bs.soup.find_all('pre')[0].text.split('\n')[0].split()[1:]
+		header = soup.find_all('pre')[0].text.split('\n')[0].split()[1:]
 		header[header.index('START')] = 'RELATIVE_START'
 		header[header.index('END')] = 'RELATIVE_END'
 
-		all_urls = [x.get('href') for x in bs.soup.find_all('pre')[0].find_all('a')]
+		all_urls = [x.get('href') for x in soup.find_all('pre')[0].find_all('a')]
 		all_urls_pairs = zip(all_urls[::2], all_urls[1::2])
 
-		ret = [{k:v for k,v in zip(header, x.split()[2:])} for x in bs.soup.find_all('pre')[0].text.split('\n') if 'details' in x]
+		ret = [{k:v for k,v in zip(header, x.split()[2:])} for x in soup.find_all('pre')[0].text.split('\n') if 'details' in x]
 
 		for i, x in enumerate(ret):
 			ret[i]['browse_url'] = 'https://genome.ucsc.edu/cgi-bin' + all_urls_pairs[i][0].replace('../cgi-bin', '')
@@ -693,6 +719,7 @@ class Utils(object):
 			f.write(buffer)
 			if file_size:
 				pb.animate_ipython(file_size_dl)
+		print # We need a new line here
 		f.close()
 
 	@staticmethod
