@@ -51,6 +51,7 @@ TODO:
 Notes:
 * This link: http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
   Contains a list of all accession codes of NCBI  
+* Interesting: M61857.1 Crasses mutalyzer.nl   
 """
 
 class MutationInfo(object):
@@ -286,7 +287,7 @@ class MutationInfo(object):
 
 		# Check variant type
 		if hgvs_type == 'c':
-			logging.warning('Variant: %s . ***SERIOUS** This is a c (coding DNA) variant. Assuming continuous coding positions.')
+			logging.warning('Variant: %s . ***SERIOUS** This is a c (coding DNA) variant. Assuming continuous coding positions.' % (variant))
 		elif hgvs_type == 'g':
 			#This should be fine
 			pass
@@ -296,7 +297,7 @@ class MutationInfo(object):
 
 		logging.info('Variant: %s . Reference on fasta: %s  Reference on variant: %s' % (variant, fasta[hgvs_position-1], hgvs_reference))
 		if fasta[hgvs_position-1] != hgvs_reference:
-			logging.error('Variant: %s . ***SERIOUS*** Reference on fasta and Reference on variant name are different!' % (variant))
+			logging.error('Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta[hgvs_position-1], hgvs_reference))
 
 		logging.info('Variant: %s . Fasta length: %i' % (variant, len(fasta)))
 		logging.info('Variant: %s . Variant position: %i' % (variant, hgvs_position))
@@ -326,7 +327,7 @@ class MutationInfo(object):
 		#Now that we have a fair sample of the sample 
 		# We can blat it!
 		blat_filename = self._create_blat_filename(hgvs_transcript, chunk_start, chunk_end)
-		logging.info('Variant: %s . blat results filename: %s' % (variant, blat_filename) )
+		logging.info('Variant: %s . Blat results filename: %s' % (variant, blat_filename) )
 		if not Utils.file_exists(blat_filename):
 			logging.info('Variant: %s . Blat filename does not exist. Requesting it from UCSC..' % (variant) )
 			self._perform_blat(fasta_chunk, blat_filename)
@@ -370,7 +371,7 @@ class MutationInfo(object):
 			with open(blat_alignment_filename, 'w') as blat_alignment_file:
 				blat_alignment_file.write(blat_real_alignment_text)
 
-		logging.info('Variant: %s . blat alignment filename exists (or created)' % (variant))
+		logging.info('Variant: %s . Blat alignment filename exists (or created)' % (variant))
 		human_genome_position, direction = self._find_alignment_position_in_blat_result(blat_alignment_filename, relative_pos, verbose=True)
 		logging.info('Variant: %s . Blat alignment position: %i, direction: %s' % (variant, human_genome_position, direction))
 
@@ -673,7 +674,7 @@ class MutationInfo(object):
 
 		search = re.search(r'^\w\w_', transcript)
 		if search is None:
-			logging.warning('Transcript: %s does not follow a WW_ pattern')
+			logging.warning('Transcript: %s does not follow a WW_ pattern' % (transcript))
 			return None
 
 		if not search.group() in accession_types:
@@ -965,6 +966,7 @@ def test():
 	print mi.get_info({})
 	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
 	print mi.get_info('NC_000001.11:g.97593343C>A')
+	print mi.get_info('M61857.1:c.121A>G')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
