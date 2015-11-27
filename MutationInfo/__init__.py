@@ -199,7 +199,7 @@ class MutationInfo(object):
 		"""
 		Doing our best to get the most out of a variant name
 
-		:param variant: A variant
+		:param variant: A variant or list of variants
 
 		"""
 
@@ -211,6 +211,17 @@ class MutationInfo(object):
 				'alt' : args[3],
 				'genome' : args[4]
 			}
+
+		#Check the type of variant
+		if type(variant) is list:
+			ret = [self.get_info(v) for v in variant]
+			return ret
+		elif type(variant) is str:
+			#This is expected
+			pass
+		else:
+			logging.error('Unknown type of variant parameter: %s  (Accepted str and list)' % (type(variant).__name__))
+			return None
 
 		#Is this an rs variant?
 		match = re.match(r'rs[\d]+', variant)
@@ -348,6 +359,7 @@ class MutationInfo(object):
 
 		#Invert reference / alternative if sequence was located in negative strand 
 		if direction == '-':
+			# TODO : Reverse also sequence for deletions / additions 
 			hgvs_reference = self._inverse(hgvs_reference)
 			hgvs_alternative = self._inverse(hgvs_alternative)
 
@@ -840,5 +852,8 @@ def test():
 	#print mi.get_info('XYZ_006446.4:c.1198T>G')
 	#print mi.get_info('NM_006446.4:c.456345635T>G')
 	print mi.get_info('NG_000004.3:g.253133T>C')
+	print mi.get_info({})
+	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
 
+	print '=' * 20
 	print 'TESTS FINISHED'
