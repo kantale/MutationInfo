@@ -45,7 +45,12 @@ TODO:
 * More documentation   http://thomas-cokelaer.info/tutorials/sphinx/docstring_python.html 
 * Fix setup.py http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
 * Add hgvs_counsyl installation and automate these steps: https://github.com/counsyl/hgvs/blob/master/examples/example1.py  
+    * Automate steps: Done
 * Maybe import inline for performance reasons? http://stackoverflow.com/questions/477096/python-import-coding-style 
+
+Notes:
+* This link: http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
+  Contains a list of all accession codes of NCBI  
 """
 
 class MutationInfo(object):
@@ -251,6 +256,18 @@ class MutationInfo(object):
 		hgvs_reference = hgvs.posedit.edit.ref
 		hgvs_alternative = hgvs.posedit.edit.alt
 
+		#Is this a reference assembly?
+		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
+			logging.info('Variant: %s . is a Complete genomic molecule, reference assembly' % (variant))
+			ncbi_info = self._get_info_from_nucleotide_entrez(hgvs_transcript)
+			search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
+			if search is None:
+				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
+				return None
+			ret = build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
+			return ret
+
+
 		#Converting the variant to VCF 
 		#Try pyhgvs 
 		try:
@@ -391,7 +408,7 @@ class MutationInfo(object):
 
 	def _get_fasta_from_nucleotide_entrez(self, ncbi_access_id): # For example NG_000004.3
 		'''
-		handle4 = Entrez.efetch(db='nucleotide', id='101011606', rettype='fasta', retmode='text') 
+		
 
 		'''
 
@@ -404,22 +421,48 @@ class MutationInfo(object):
 		fasta = self._load_ncbi_fasta_filename(ncbi_access_id)
 		if fasta is None:
 
-			logging.info('Could not find local file for %s Querying Entrez..' % (ncbi_access_id))
+			logging.info('Could not find local fasta file for %s Querying Entrez..' % (ncbi_access_id))
 			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text', rettype='fasta')
 			fasta = handle.read()
+			handle.close()
 
-			logging.info('Fasta fetched: %s...' % (fasta[0:20]))
+			logging.info('Fasta fetched: %s...' % (fasta[0:40]))
 		
 			self._save_ncbi_fasta_filename(ncbi_access_id, fasta)
 
 		return strip_fasta(fasta)
 
 
+	def _get_info_from_nucleotide_entrez(self, ncbi_access_id):
+		'''
+		TODO: 
+		* Duplicate code with _get_fasta_from_nucleotide_entrez
+		* Error management..
+		'''
+		info = self._load_ncbi_info_filename(ncbi_access_id)
+		if info is None:
+			logging.info('Could find local info file for %s . Querying Entrez..' % (ncbi_access_id))
+			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text')
+			info = handle.read()
+			handle.close()
+
+			logging.info('Info fetched: %s...' % (info[0:40]))
+			self._save_ncbi_info_filename(ncbi_access_id, info)
+
+		return info
+
 	def _ncbi_fasta_filename(self, ncbi_access_id):
 		'''
 		Create filename that contains NCBI fasta file
 		'''
 		return os.path.join(self.transcripts_directory, ncbi_access_id + '.fasta')
+
+	def _ncbi_info_filename(self, ncbi_access_id):
+		'''
+		Create filename that contains NCBI info file
+		'''
+		return os.path.join(self.transcripts_directory, ncbi_access_id + '.info')
+
 
 	def _save_ncbi_fasta_filename(self, ncbi_access_id, fasta):
 		'''
@@ -430,6 +473,15 @@ class MutationInfo(object):
 		if not Utils.file_exists(filename):
 			with open(filename, 'w') as f:
 				f.write(fasta)
+
+	def _save_ncbi_info_filename(self, ncbi_access_id, info):
+		'''
+		Save NCBI info to file
+		'''
+		filename = self._ncbi_info_filename(ncbi_access_id)
+		if not Utils.file_exists(filename):
+			with open(filename, 'w') as f:
+				f.write(info)
 
 	def _load_ncbi_fasta_filename(self, ncbi_access_id):
 		'''
@@ -444,6 +496,20 @@ class MutationInfo(object):
 			fasta = f.read()
 
 		return fasta
+
+	def _load_ncbi_info_filename(self, ncbi_access_id):
+		'''
+		Load NCBI info file
+		'''
+		filename = self._ncbi_info_filename(ncbi_access_id)
+		if not Utils.file_exists(filename):
+			return None
+
+		logging.info('Found transcript info filename: %s' % (filename))
+		with open(filename) as f:
+			info = f.read()
+
+		return info
 
 	def _perform_blat(self, fasta, output_filename):
 		'''
@@ -574,6 +640,50 @@ class MutationInfo(object):
 		return alignment_index, direction
 
 
+	@staticmethod
+	def _get_ncbi_accession_type(transcript):
+		'''
+
+		Get the accession type of a transcript
+
+		List of all accessions
+		http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
+		'''
+
+		# Headers 
+		# Accession prefix	Molecule type	Comment
+		accession_types = {
+			'AC_': ['Genomic', 'Complete genomic molecule, usually alternate assembly'],
+			'NC_': ['Genomic', 'Complete genomic molecule, usually reference assembly'],
+			'NG_': ['Genomic', 'Incomplete genomic region'],
+			'NT_': ['Genomic', 'Contig or scaffold, clone-based or WGSa'],
+			'NW_': ['Genomic', 'Contig or scaffold, primarily WGSa'],
+			'NS_': ['Genomic', 'Environmental sequence'],
+			'NZ_': ['Genomic', 'Unfinished WGS'],
+			'NM_': ['mRNA', ''],
+			'NR_': ['RNA', ''],
+			'XM_': ['mRNA', 'Predicted model'],
+			'XR_': ['RNA', 'Predicted model'],
+			'AP_': ['Protein', 'Annotated on AC_ alternate assembly'],
+			'NP_': ['Protein', 'Associated with an NM_ or NC_ accession'],
+			'YP_': ['Protein', ''],
+			'XP_': ['Protein', 'Predicted model, associated with an XM_ accession'],
+			'ZP_': ['Protein', 'Predicted model, annotated on NZ_ genomic records'],
+		}
+
+		search = re.search(r'^\w\w_', transcript)
+		if search is None:
+			logging.warning('Transcript: %s does not follow a WW_ pattern')
+			return None
+
+		if not search.group() in accession_types:
+			logging.warning('Accesion type: %s of transcript: %s does not belong to known accesion types' % (search.group(), transcript))
+			return None
+
+		ret = search.group()[0:-1] # Remove '_'
+		return ret
+
+
 class Counsyl_HGVS(object):
 	'''
 	Wrapper class for pyhgvs https://github.com/counsyl/hgvs 
@@ -589,7 +699,7 @@ class Counsyl_HGVS(object):
 
 		# Check genome option
 		if re.match(r'hg[\d]+', genome) is None:
-			raise ValueError('Parameter genome should follow the patern: hgDD (for example hg18, hg19, hg38) ')
+			raise ValueError('Parameter genome should follow the pattern: hgDD (for example hg18, hg19, hg38) ')
 
 		#Init counsyl PYHGVS
 		self.fasta_directory = os.path.join(self.local_directory, genome)
@@ -854,6 +964,7 @@ def test():
 	print mi.get_info('NG_000004.3:g.253133T>C')
 	print mi.get_info({})
 	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
+	print mi.get_info('NC_000001.11:g.97593343C>A')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
