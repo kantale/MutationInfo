@@ -52,6 +52,8 @@ Notes:
 * This link: http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
   Contains a list of all accession codes of NCBI  
 * Interesting: M61857.1 Crasses mutalyzer.nl   
+* None of the three methods of VariantMapper can convert from c. to g. 
+    * http://hgvs.readthedocs.org/en/latest/modules/mapping.html#module-hgvs.variantmapper
 """
 
 class MutationInfo(object):
@@ -287,7 +289,11 @@ class MutationInfo(object):
 
 		# Check variant type
 		if hgvs_type == 'c':
-			logging.warning('Variant: %s . ***SERIOUS** This is a c (coding DNA) variant. Assuming continuous coding positions.' % (variant))
+			logging.warning('Variant: %s . This is a c (coding DNA) variant. Trying to infer g position..' % (variant))
+			logging.info('Variant: %s . Fetching NCBI XML for transcript: %s' % (variant, hgvs_transcript))
+			ncbi_xml = self._get_xml_from_nucleotide_entrez(hgvs_transcript)
+
+			
 		elif hgvs_type == 'g':
 			#This should be fine
 			pass
@@ -434,21 +440,22 @@ class MutationInfo(object):
 		return strip_fasta(fasta)
 
 
-	def _get_info_from_nucleotide_entrez(self, ncbi_access_id):
+	def _get_xml_from_nucleotide_entrez(self, ncbi_access_id):
 		'''
 		TODO: 
 		* Duplicate code with _get_fasta_from_nucleotide_entrez
 		* Error management..
 		'''
-		info = self._load_ncbi_info_filename(ncbi_access_id)
+		info = self._load_ncbi_xml_filename(ncbi_access_id)
 		if info is None:
-			logging.info('Could find local info file for %s . Querying Entrez..' % (ncbi_access_id))
-			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text')
+			logging.info('Could not find local info file for %s . Querying Entrez..' % (ncbi_access_id))
+			#handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text') # ASN.1 
+			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text', rettype='xml')
 			info = handle.read()
 			handle.close()
 
 			logging.info('Info fetched: %s...' % (info[0:40]))
-			self._save_ncbi_info_filename(ncbi_access_id, info)
+			self._save_ncbi_xml_filename(ncbi_access_id, info)
 
 		return info
 
@@ -458,11 +465,11 @@ class MutationInfo(object):
 		'''
 		return os.path.join(self.transcripts_directory, ncbi_access_id + '.fasta')
 
-	def _ncbi_info_filename(self, ncbi_access_id):
+	def _ncbi_xml_filename(self, ncbi_access_id):
 		'''
 		Create filename that contains NCBI info file
 		'''
-		return os.path.join(self.transcripts_directory, ncbi_access_id + '.info')
+		return os.path.join(self.transcripts_directory, ncbi_access_id + '.xml')
 
 
 	def _save_ncbi_fasta_filename(self, ncbi_access_id, fasta):
@@ -475,11 +482,12 @@ class MutationInfo(object):
 			with open(filename, 'w') as f:
 				f.write(fasta)
 
-	def _save_ncbi_info_filename(self, ncbi_access_id, info):
+	def _save_ncbi_xml_filename(self, ncbi_access_id, info):
 		'''
 		Save NCBI info to file
 		'''
-		filename = self._ncbi_info_filename(ncbi_access_id)
+		filename = self._ncbi_xml_filename(ncbi_access_id)
+		logging.info('Saving transcript info of %s to file: %s' % (ncbi_access_id, filename))
 		if not Utils.file_exists(filename):
 			with open(filename, 'w') as f:
 				f.write(info)
@@ -498,11 +506,11 @@ class MutationInfo(object):
 
 		return fasta
 
-	def _load_ncbi_info_filename(self, ncbi_access_id):
+	def _load_ncbi_xml_filename(self, ncbi_access_id):
 		'''
 		Load NCBI info file
 		'''
-		filename = self._ncbi_info_filename(ncbi_access_id)
+		filename = self._ncbi_xml_filename(ncbi_access_id)
 		if not Utils.file_exists(filename):
 			return None
 
@@ -682,6 +690,111 @@ class MutationInfo(object):
 			return None
 
 		ret = search.group()[0:-1] # Remove '_'
+		return ret
+
+	@staticmethod
+	def _get_sequence_features_from_XML_NCBI(filename):
+		'''
+		Return all sequence features from XML NCBI file.
+		returns a dictionary with start and end positions of each feature
+		'''
+
+		fields_1 = [
+			u'Bioseq-set_seq-set',
+			0,
+			u'Seq-entry_seq',
+			u'Bioseq',
+			u'Bioseq_annot',
+			0,
+			u'Seq-annot_data',
+			u'Seq-annot_data_ftable',
+		]
+
+		def apply_field(record, fields, starting_path):
+			current_record = record
+			current_path = starting_path
+
+			for field in fields:
+				current_path += u' --> ' + str(field)
+				#print current_path
+				if type(current_record).__name__ == 'DictionaryElement':
+					if field in current_record:
+						current_record = current_record[field]
+					else:
+						logging.error('Could not find record: %s in XML Entrez filename: %s' % (current_path, filename))
+						return None
+				elif type(current_record).__name__ == 'ListElement':
+					if len(current_record) < field:
+						logging.error('Could not find record: %s in XML Entrex filename: %s' % (current_path, filename))
+						return None
+					else:
+						current_record = current_record[field]
+				else:
+					raise Exception('Unknown XML field type: %s' % type(current_record).__name__)
+
+			return current_record, current_path
+
+
+		with open(filename) as f:
+			record = Entrez.read(f)
+
+		path = 'START'
+
+		current_record, path = apply_field(record, fields_1, path)
+
+		ret = {}
+
+		# Keep only data entries of the feature table
+		for location_entry_index, location_entry in enumerate(current_record):
+			current_path = path + u' --> ' + str(location_entry_index)
+			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_data', u'SeqFeatData'], current_path)
+			
+			location_keys = loc_current_entry.keys()
+			if len(location_keys) != 1:
+				logging.error('Entrez XML file: %s , path: %s has more than one record: %s' % (filename, loc_path, str(location_keys)))
+				return None
+
+			location_key = location_keys[0]
+			search = re.search(r'_([\w]+)$', location_key)
+			if search is None:
+				logging.error('Entrez XML file: %s , path: %s . Cannot process key: %s (expected YYY_ZZZ name (for example: SeqFeatData_rna))' % (filename, loc_path, location_key))
+				return None
+
+			key = search.group(1)
+			loc_current_entry, loc_path = apply_field(loc_current_entry, ['SeqFeatData_%s' % (key)], loc_path)
+		
+			ref_keys = loc_current_entry.keys()
+			if len(ref_keys) != 1:
+				logging.error('Entrez XML file: %s , path: %s has more than one record: %s' % (filename, loc_path, str(ref_keys)))
+				return None
+
+			ref_key = ref_keys[0]
+			search = re.search(r'([\w]+)-([\w]+)', ref_key)
+			if search is None:
+				logging.error('Entrex XML file: %s , path: %s . Cannot process key: %s (expected YYY-ZZZ name (for example: Gene-ref))' % (filename, loc_path, location_key))
+				return None
+
+			if search.group(2) != u'ref':
+				#Ignore these entries
+				continue
+
+			if search.group(1).lower() != key.lower():
+				logging.error('Entrez XML file: %s , path: %s . Could not find expected key: %s' % (filename, loc_path, key + '-ref'))
+				return None
+
+			loc_current_entry, loc_path = apply_field(loc_current_entry, [ref_key], loc_path)
+			#We do not traverse any further. We keep the key as the element name
+			#We continue to seek the interval positions
+
+
+			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_from'], current_path)
+			sequence_from = loc_current_entry
+
+			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_to'], current_path)
+			sequence_to = loc_current_entry
+
+			ret[key] = [sequence_from, sequence_to]
+
 		return ret
 
 
@@ -941,6 +1054,7 @@ def test():
 
 	logging.basicConfig(level=logging.INFO)
 
+
 	print '------FUZZY HGVS CORRECTOR---------'
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C')
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C', transcript='NM_001042351.1')
@@ -970,3 +1084,23 @@ def test():
 
 	print '=' * 20
 	print 'TESTS FINISHED'
+
+
+
+
+	print fff('/Users/alexandroskanterakis/Library/Application Support/MutationInfo/transcripts/M61857.1.xml')
+
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][i][u'Seq-feat_data'][u'SeqFeatData'][u'SeqFeatData_rna'][u'RNA-ref'][u'RNA-ref_type'].attributes[u'value']
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][i][u'Seq-feat_location'][u'Seq-loc'][u'Seq-loc_int'][u'Seq-interval'][u'Seq-interval_from']
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][i][u'Seq-feat_location'][u'Seq-loc'][u'Seq-loc_int'][u'Seq-interval'][u'Seq-interval_to']
+
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][1][u'Seq-feat_location'][u'Seq-loc'].keys() --> [u'Seq-loc_pnt']
+
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][3][u'Seq-feat_data'][u'SeqFeatData'].keys() --> [u'SeqFeatData_gene'] 
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][3][u'Seq-feat_data'][u'SeqFeatData'][u'SeqFeatData_gene'][u'Gene-ref'][u'Gene-ref_locus'] --> CYP2C9 
+
+
+
+
+
+
