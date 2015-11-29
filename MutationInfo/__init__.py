@@ -285,14 +285,16 @@ class MutationInfo(object):
 
 		logging.info('pyhgvs failed...')
 		logging.info('Fetching fasta sequence for trascript: %s' % (hgvs_transcript))
-		fasta = self._get_fasta_from_nucleotide_entrez(hgvs_transcript)
+		#fasta = self._get_fasta_from_nucleotide_entrez(hgvs_transcript)
+		fasta = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='fasta')
 
 		# Check variant type
 		if hgvs_type == 'c':
 			logging.warning('Variant: %s . This is a c (coding DNA) variant. Trying to infer g position..' % (variant))
 			logging.info('Variant: %s . Fetching NCBI XML for transcript: %s' % (variant, hgvs_transcript))
-			ncbi_xml = self._get_xml_from_nucleotide_entrez(hgvs_transcript)
-
+			#ncbi_xml = self._get_xml_from_nucleotide_entrez(hgvs_transcript)
+			ncbi_xml = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
+			assert False # Stop here
 			
 		elif hgvs_type == 'g':
 			#This should be fine
@@ -411,7 +413,40 @@ class MutationInfo(object):
 
 	def _create_blat_alignment_filename(self, transcript, chunk_start, chunk_end):
 		return os.path.join(self.blat_directory, 
-			transcript + '_' + str(chunk_start) + '_' + str(chunk_end) + '.blat')		
+			transcript + '_' + str(chunk_start) + '_' + str(chunk_end) + '.blat')
+
+	def _entrez_request(self, ncbi_access_id, retmode, rettype):
+		handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode=retmode, rettype=rettype)
+		data = handle.read()
+		handle.close()
+
+		return data
+
+	def _get_data_from_nucleotide_entrez(self, ncbi_access_id, retmode, rettype):
+
+		filename = self._ncbi_filename(ncbi_access_id, rettype)
+		logging.info('NCBI %s %s filename: %s' % (retmode, rettype, filename))
+
+		if Utils.file_exists(filename):
+			logging.info('Filename: %s exists.' % (filename))
+			data = self._load_ncbi_filename(ncbi_access_id, rettype)
+		else:
+			logging.info('Filename: %s does not exist. Querying ncbi through Entrez..' % (filename))
+			data = self._entrez_request(ncbi_access_id, retmode, rettype)
+			self._save_ncbi_filename(ncbi_access_id, rettype, data)
+			logging.info('Filename: %s created.' % (filename))
+
+		if rettype == 'fasta':
+			return self.strip_fasta(data)
+		else:
+			return data
+
+	@staticmethod
+	def strip_fasta(fasta):
+		'''
+		Strips comments and newline characters from fasta data
+		'''
+		return ''.join([x for x in fasta.split('\n') if '>' not in x])
 
 	def _get_fasta_from_nucleotide_entrez(self, ncbi_access_id): # For example NG_000004.3
 		'''
@@ -419,11 +454,6 @@ class MutationInfo(object):
 
 		'''
 
-		def strip_fasta(fasta):
-			'''
-			Get a fasta file and removes "new line" and comments at the start
-			'''
-			return ''.join([x for x in fasta.split('\n') if '>' not in x])
 
 		fasta = self._load_ncbi_fasta_filename(ncbi_access_id)
 		if fasta is None:
@@ -459,66 +489,34 @@ class MutationInfo(object):
 
 		return info
 
-	def _ncbi_fasta_filename(self, ncbi_access_id):
+	def _ncbi_filename(self, ncbi_access_id, rettype):
 		'''
 		Create filename that contains NCBI fasta file
+		rettype : fasta , xml
 		'''
-		return os.path.join(self.transcripts_directory, ncbi_access_id + '.fasta')
-
-	def _ncbi_xml_filename(self, ncbi_access_id):
-		'''
-		Create filename that contains NCBI info file
-		'''
-		return os.path.join(self.transcripts_directory, ncbi_access_id + '.xml')
+		return os.path.join(self.transcripts_directory, ncbi_access_id + '.' + rettype)
 
 
-	def _save_ncbi_fasta_filename(self, ncbi_access_id, fasta):
+	def _save_ncbi_filename(self, ncbi_access_id, rettype, data):
 		'''
 		Save NCBI fasta to file
 		'''
 
-		filename = self._ncbi_fasta_filename(ncbi_access_id)
-		if not Utils.file_exists(filename):
-			with open(filename, 'w') as f:
-				f.write(fasta)
+		filename = self._ncbi_filename(ncbi_access_id, rettype)
+		with open(filename, 'w') as f:
+			f.write(fasta)
 
-	def _save_ncbi_xml_filename(self, ncbi_access_id, info):
-		'''
-		Save NCBI info to file
-		'''
-		filename = self._ncbi_xml_filename(ncbi_access_id)
-		logging.info('Saving transcript info of %s to file: %s' % (ncbi_access_id, filename))
-		if not Utils.file_exists(filename):
-			with open(filename, 'w') as f:
-				f.write(info)
-
-	def _load_ncbi_fasta_filename(self, ncbi_access_id):
+	def _load_ncbi_filename(self, ncbi_access_id, rettype):
 		'''
 		Load NCBI fasta file
 		'''
-		filename = self._ncbi_fasta_filename(ncbi_access_id)
-		if not Utils.file_exists(filename):
-			return None
+		filename = self._ncbi_filename(ncbi_access_id, rettype)
 
-		logging.info('Found trascript fasta filename: %s' % (filename))
 		with open(filename) as f:
-			fasta = f.read()
+			data = f.read()
 
-		return fasta
+		return data
 
-	def _load_ncbi_xml_filename(self, ncbi_access_id):
-		'''
-		Load NCBI info file
-		'''
-		filename = self._ncbi_xml_filename(ncbi_access_id)
-		if not Utils.file_exists(filename):
-			return None
-
-		logging.info('Found transcript info filename: %s' % (filename))
-		with open(filename) as f:
-			info = f.read()
-
-		return info
 
 	def _perform_blat(self, fasta, output_filename):
 		'''
