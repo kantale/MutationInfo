@@ -258,7 +258,11 @@ class MutationInfo(object):
 		hgvs_type = hgvs.type
 		hgvs_position = hgvs.posedit.pos.start.base
 		hgvs_reference = hgvs.posedit.edit.ref
-		hgvs_alternative = hgvs.posedit.edit.alt
+		if hasattr(hgvs.posedit.edit, 'alt'):
+			hgvs_alternative = hgvs.posedit.edit.alt
+		else:
+			hgvs_alternative = None
+
 
 		#Is this a reference assembly?
 		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
@@ -1135,6 +1139,7 @@ def test():
 	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
 	print mi.get_info('NC_000001.11:g.97593343C>A')
 	print mi.get_info('M61857.1:c.121A>G')
+	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
