@@ -51,10 +51,12 @@ TODO:
 Notes:
 * This link: http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
   Contains a list of all accession codes of NCBI  
-* Interesting: M61857.1 Crasses mutalyzer.nl   
+* Interesting: M61857.1 Crashes mutalyzer.nl   
 * None of the three methods of VariantMapper can convert from c. to g. 
     * http://hgvs.readthedocs.org/en/latest/modules/mapping.html#module-hgvs.variantmapper
 * Clinvar : http://www.ncbi.nlm.nih.gov/clinvar/?term=M61857.1%3Ac.121A%3EG Could not identify variant M61857.1:c.121A>G 
+* Interesting: NT_005120.15:g.-1126G>T is the same as NT_005120.15:g.1126G>T in mutalyzer 
+    * https://mutalyzer.nl/name-checker?description=NT_005120.15%3Ag.-1126G%3ET 
 """
 
 class MutationInfo(object):
