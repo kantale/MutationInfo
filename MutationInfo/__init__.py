@@ -354,26 +354,19 @@ class MutationInfo(object):
 			logging.info('Variant: %s . Fetching genbank entry for transcript: %s' % (variant, hgvs_transcript))
 			#ncbi_xml = self._get_xml_from_nucleotide_entrez(hgvs_transcript)
 			#ncbi_xml = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
-			genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gb')
-			genbank_filename = self._ncbi_filename(hgvs_transcript, 'gb')
+			#genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gb')
+			genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gbwithparts')
+			genbank_filename = self._ncbi_filename(hgvs_transcript, 'gbwithparts')
 			logging.info('Variant: %s . Genbank filename: %s' % (variant, genbank_filename))
-			genbank_features = self._get_sequence_features_from_genbank(genbank_filename)
-			print genbank_features
-			a=1/0
-			ncbi_xml_features = self._get_sequence_features_from_XML_NCBI(ncbi_xml_filename)
-			logging.info('Variant: %s . Found sequence features: %s ' % (variant, str(ncbi_xml_features)))
-			if not ncbi_xml_features:
-				logging.error('Variant: %s . Could not locate exon / CDS regions in NCBI transcript file.' % (variant))
-				return None
-			ncbi_xml_features_accepted = {k:ncbi_xml_features[k] for k in ncbi_xml_features if k in [u'cdregion', u'rna']}
-			if not ncbi_xml_features_accepted:
-				logging.error('Variant: %s . Could not find names of accepted regions (cdregion, rna)' % (variant))
-				return None
-			start_positions = [x[0] for x in ncbi_xml_features_accepted.values()]
-			if len(set(start_positions)) > 1:
-				logging.warning('Variant: %s . ***SERIOUS*** More than one possible starting positions: %s' % (variant, str(start_positions)))
-			start_position = int(start_positions[0])
-			hgvs_position += start_position
+			if 'gene' in kwargs:
+				genbank_gene = kwargs['gene']
+			else:
+				genbank_gene = None
+			genbank_c_to_g_mapper = self._get_sequence_features_from_genbank(genbank_filename, gene=genbank_gene)
+			new_hgvs_position = genbank_c_to_g_mapper(int(hgvs_position))
+			logging.info('Variant: %s . New hgvs g. position: %i   Old c. position: %i' % (variant, new_hgvs_position, hgvs_position))
+			hgvs_position = new_hgvs_position
+			hgvs_type = 'g'
 			
 		elif hgvs_type == 'g':
 			#This should be fine
@@ -445,7 +438,7 @@ class MutationInfo(object):
 			logging.info('Variant: %s . Real blat alignment URL: %s' % (variant, blat_real_alignment_url))
 			blat_real_alignment_filename = blat_alignment_filename + '.html'
 			logging.info('Variant: %s . Real blat alignment filename: %s' % (variant, blat_real_alignment_url))
-			logging.info('Variant: %s . Downloading real blat alignment filename..')
+			logging.info('Variant: %s . Downloading real blat alignment filename..' % (variant))
 			Utils.download(blat_real_alignment_url, blat_real_alignment_filename)
 			logging.info('Variant: %s . Reading content from real alignment filename' % (variant))
 			with open(blat_real_alignment_filename) as blat_real_alignment_file:
@@ -495,6 +488,9 @@ class MutationInfo(object):
 			transcript + '_' + str(chunk_start) + '_' + str(chunk_end) + '.blat')
 
 	def _entrez_request(self, ncbi_access_id, retmode, rettype):
+		'''
+		http://www.ncbi.nlm.nih.gov/books/NBK25499/table/chapter4.T._valid_values_of__retmode_and/?report=objectonly 
+		'''
 		handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode=retmode, rettype=rettype)
 		data = handle.read()
 		handle.close()
@@ -854,6 +850,19 @@ class MutationInfo(object):
 
 	# ----------------------------------------
 	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][0][u'Seq-feat_location'][u'Seq-loc'][u'Seq-loc_mix'][u'Seq-loc-mix'][10]
+
+
+	Test with
+	#Check XML parsers
+	hgvs_transcripts = ['NM_052896.3', 'M61857.1']
+	for hgvs_transcript in hgvs_transcripts: 
+		ncbi_xml = mi._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
+		ncbi_xml_filename = mi._ncbi_filename(hgvs_transcript, 'xml')
+		print 'Filename: ', ncbi_xml_filename
+		ncbi_xml_features = mi._get_sequence_features_from_XML_NCBI(ncbi_xml_filename)
+		print 'Features:', ncbi_xml_features
+
+
 		'''
 
 		fields_1 = [
@@ -1278,22 +1287,6 @@ def test():
 	print '--------GET INFO--------------------'
 	mi = MutationInfo()
 
-	print '====='
-	print mi._get_sequence_features_from_genbank('/Users/alexandroskanterakis/Downloads/NT_005120.15.gb', gene='UGT1A1')
-	print '====='
-	print mi._get_sequence_features_from_genbank('/Users/alexandroskanterakis/Library/Application Support/MutationInfo/transcripts/M61857.1.gb')
-
-	a=1/0
-
-	#Check XML parsers
-	hgvs_transcripts = ['NM_052896.3', 'M61857.1']
-	for hgvs_transcript in hgvs_transcripts: 
-		ncbi_xml = mi._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
-		ncbi_xml_filename = mi._ncbi_filename(hgvs_transcript, 'xml')
-		print 'Filename: ', ncbi_xml_filename
-		ncbi_xml_features = mi._get_sequence_features_from_XML_NCBI(ncbi_xml_filename)
-		print 'Features:', ncbi_xml_features
-
 	print mi.get_info('NM_006446.4:c.1198T>G')
 	#print mi.get_info('XYZ_006446.4:c.1198T>G')
 	#print mi.get_info('NM_006446.4:c.456345635T>G')
@@ -1303,7 +1296,7 @@ def test():
 	print mi.get_info('NC_000001.11:g.97593343C>A')
 	print mi.get_info('M61857.1:c.121A>G')
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
-	print mi.get_info('NT_005120.15:c.-1126C>T')
+	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
