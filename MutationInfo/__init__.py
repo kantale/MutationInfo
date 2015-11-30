@@ -13,7 +13,7 @@ import tarfile
 import urllib2
 import requests
 
-from Bio import Entrez
+from Bio import Entrez, SeqIO
 from appdirs import *
 
 # Importing: https://bitbucket.org/biocommons/hgvs
@@ -350,10 +350,16 @@ class MutationInfo(object):
 		# Check variant type
 		if hgvs_type == 'c':
 			logging.warning('Variant: %s . This is a c (coding DNA) variant. Trying to infer g position..' % (variant))
-			logging.info('Variant: %s . Fetching NCBI XML for transcript: %s' % (variant, hgvs_transcript))
+			#logging.info('Variant: %s . Fetching NCBI XML for transcript: %s' % (variant, hgvs_transcript))
+			logging.info('Variant: %s . Fetching genbank entry for transcript: %s' % (variant, hgvs_transcript))
 			#ncbi_xml = self._get_xml_from_nucleotide_entrez(hgvs_transcript)
-			ncbi_xml = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
-			ncbi_xml_filename = self._ncbi_filename(hgvs_transcript, 'xml')
+			#ncbi_xml = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
+			genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gb')
+			genbank_filename = self._ncbi_filename(hgvs_transcript, 'gb')
+			logging.info('Variant: %s . Genbank filename: %s' % (variant, genbank_filename))
+			genbank_features = self._get_sequence_features_from_genbank(genbank_filename)
+			print genbank_features
+			a=1/0
 			ncbi_xml_features = self._get_sequence_features_from_XML_NCBI(ncbi_xml_filename)
 			logging.info('Variant: %s . Found sequence features: %s ' % (variant, str(ncbi_xml_features)))
 			if not ncbi_xml_features:
@@ -521,51 +527,11 @@ class MutationInfo(object):
 		'''
 		return ''.join([x for x in fasta.split('\n') if '>' not in x])
 
-	def _get_fasta_from_nucleotide_entrez(self, ncbi_access_id): # For example NG_000004.3
-		'''
-		
-
-		'''
-
-
-		fasta = self._load_ncbi_fasta_filename(ncbi_access_id)
-		if fasta is None:
-
-			logging.info('Could not find local fasta file for %s Querying Entrez..' % (ncbi_access_id))
-			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text', rettype='fasta')
-			fasta = handle.read()
-			handle.close()
-
-			logging.info('Fasta fetched: %s...' % (fasta[0:40]))
-		
-			self._save_ncbi_fasta_filename(ncbi_access_id, fasta)
-
-		return strip_fasta(fasta)
-
-
-	def _get_xml_from_nucleotide_entrez(self, ncbi_access_id):
-		'''
-		TODO: 
-		* Duplicate code with _get_fasta_from_nucleotide_entrez
-		* Error management..
-		'''
-		info = self._load_ncbi_xml_filename(ncbi_access_id)
-		if info is None:
-			logging.info('Could not find local info file for %s . Querying Entrez..' % (ncbi_access_id))
-			#handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text') # ASN.1 
-			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode='text', rettype='xml')
-			info = handle.read()
-			handle.close()
-
-			logging.info('Info fetched: %s...' % (info[0:40]))
-			self._save_ncbi_xml_filename(ncbi_access_id, info)
-
-		return info
 
 	def _ncbi_filename(self, ncbi_access_id, rettype):
 		'''
 		Create filename that contains NCBI fasta file
-		rettype : fasta , xml
+		rettype : fasta , xml , gb (genbank)
 		'''
 		return os.path.join(self.transcripts_directory, ncbi_access_id + '.' + rettype)
 
@@ -764,8 +730,111 @@ class MutationInfo(object):
 		return ret
 
 	@staticmethod
+	def _get_sequence_features_from_genbank(filename, gene=None):
+
+		def get_feature_genes(features):
+			feature_genes = [feature.qualifiers['gene'] for feature in features]
+			feature_genes_flat_set = list(set([y for x in feature_genes for y in x]))
+
+			return feature_genes_flat_set
+
+		def select_gene(features, genes):
+			if len(genes) == 1:
+				logging.info('Genbank filename: %s . Selecting unique gene: %s' % (filename, genes[0]))
+				selected_gene = genes[0]
+			else:
+				if gene is None:
+					logging.error('Genbank filename: %s . gene parameter is None . please select one of the following genes: %s' % (filename, genes))
+					return None
+				else:
+					if gene in genes:
+						selected_gene = gene
+					else:
+						logging.error('Genbank filename: %s . gene: %s is not present in genbank file' % (filename, gene))
+
+			return [feature for feature in features if selected_gene in feature.qualifiers['gene']]
+
+		def get_positions(features):
+			ret = []
+			assert len(features) == 1
+			feature = features[0]
+
+			if len(feature.sub_features) == 0:
+				ret.append((
+					feature.location.start.position, 
+					feature.location.end.position, 
+					feature.location.strand
+					))
+			else:
+				for sub_feature in feature.sub_features:
+					ret.append((
+						sub_feature.location.start.position, 
+						sub_feature.location.end.position, 
+						sub_feature.location.strand
+						))
+
+			return ret
+
+		def select_features(record, f_type):
+			all_f = [x for x in record.features if x.type == f_type]
+			if len(all_f) == 0:
+				return []
+
+			all_f_genes = get_feature_genes(all_f)
+			all_f_gene_features = select_gene(all_f, all_f_genes)
+			if all_f_gene_features is None:
+				return None
+
+			all_f_positions = get_positions(all_f_gene_features)
+			return all_f_positions
+
+
+		with open(filename) as f:
+			records = list(SeqIO.parse(f, 'genbank'))
+
+		if len(records) != 1:
+			logging.error('Genbank file: %s . Found more than one genbank record.' % (filename))
+			return None
+
+		#Get CDS 
+		CDS_positions = select_features(records[0], 'CDS')
+		mRNA_positions = select_features(records[0], 'mRNA')
+
+		if not CDS_positions is None and len(CDS_positions) == 0:
+			logging.warning('Genbank file %s . No CDS features found.' % (filename))
+
+		if CDS_positions:
+			start = CDS_positions[0][0] + 1
+			end = CDS_positions[-1][1]
+
+			print 'CDS START/END : %i/%i' % (start, end)
+
+			def ret_f(c_pos):
+				if c_pos < 1:
+					return start + c_pos
+
+				previous_dif = 0
+				for CDS_position in CDS_positions:
+					current_dif = CDS_position[1] - CDS_position[0]
+					if previous_dif <= c_pos <= previous_dif + current_dif:
+						return CDS_position[0] + c_pos - previous_dif 
+					previous_dif += current_dif
+				return CDS_positions[-1][1] + c_pos - previous_dif 
+
+			for i in range(-15, 2001):
+				print i, ret_f(i)
+
+			a=1/0
+
+		print 'CDS:', CDS_positions
+		print 'mRNA:', mRNA_positions
+
+	@staticmethod
 	def _get_sequence_features_from_XML_NCBI(filename):
 		'''
+		DEPRECATED!! 
+		Use 
+
 		Return all sequence features from XML NCBI file.
 		returns a dictionary with start and end positions of each feature
 
@@ -782,6 +851,8 @@ class MutationInfo(object):
 	# ---------------------------------------- 
 	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_set'][u'Bioseq-set'][u'Bioseq-set_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][0][u'Seq-feat_location']
 
+	# ----------------------------------------
+	# record[u'Bioseq-set_seq-set'][0][u'Seq-entry_seq'][u'Bioseq'][u'Bioseq_annot'][0][u'Seq-annot_data'][u'Seq-annot_data_ftable'][0][u'Seq-feat_location'][u'Seq-loc'][u'Seq-loc_mix'][u'Seq-loc-mix'][10]
 		'''
 
 		fields_1 = [
@@ -888,13 +959,44 @@ class MutationInfo(object):
 				#We continue to seek the interval positions
 
 
-			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_from'], current_path)
-			sequence_from = loc_current_entry
+#			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_from'], current_path)
+			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc'], current_path)
+			if u'Seq-loc_int' in loc_current_entry:
+				loc_current_entry, loc_path = apply_field(loc_current_entry, [u'Seq-loc_int', u'Seq-interval'], loc_path)
+				sequence_from, _ = apply_field(loc_current_entry, [u'Seq-interval_from'], loc_path)
+				sequence_to, _ = apply_field(loc_current_entry, [u'Seq-interval_to'], loc_path)
+				ret[key] = [sequence_from, sequence_to]
+			elif u'Seq-loc_mix' in loc_current_entry:
+				loc_current_entry, loc_path = apply_field(loc_current_entry, [u'Seq-loc_mix', u'Seq-loc-mix'], loc_path)
+				ret[key] = []
+				for seq_loc_mix_index, seq_loc_mix in enumerate(loc_current_entry):
+					seq_loc_path = loc_path + ' --> %i ' % (seq_loc_mix_index)
+					loc_current_entry, loc_path = apply_field(seq_loc_mix, [u'Seq-loc_int', u'Seq-interval'], seq_loc_path)
+					sequence_from, _ = apply_field(loc_current_entry, [u'Seq-interval_from'], loc_path)
+					sequence_to, _ = apply_field(loc_current_entry, [u'Seq-interval_to'], loc_path)
+					ret[key].append([sequence_from, sequence_to])
+			elif u'Seq-loc_packed-int' in loc_current_entry:
+				loc_current_entry, loc_path = apply_field(loc_current_entry, [u'Seq-loc_packed-int', u'Packed-seqint'], loc_path)
+				ret[key] = []
+				for seq_loc_mix_index, seq_loc_mix in enumerate(loc_current_entry):
+					seq_loc_path = loc_path + ' --> %i ' % (seq_loc_mix_index)
+					#loc_current_entry, loc_path = apply_field(seq_loc_mix, [u'Seq-loc_int', u'Seq-interval'], seq_loc_path)
+					sequence_from, _ = apply_field(seq_loc_mix, [u'Seq-interval_from'], seq_loc_path)
+					sequence_to, _ = apply_field(seq_loc_mix, [u'Seq-interval_to'], seq_loc_path)
+					ret[key].append([sequence_from, sequence_to])
+			else:
+				if hasattr(loc_current_entry, 'keys'):
+					logging.error('Entrez XML file: %s , path: %s . Could not find Seq-loc_int OR Seq-loc_mix . Existing keys: %s' % (filename, loc_path, str(loc_current_entry.keys())))
+					return None
+				else:
+					a=1/0
 
-			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_to'], current_path)
-			sequence_to = loc_current_entry
+#			sequence_from = loc_current_entry
 
-			ret[key] = [sequence_from, sequence_to]
+#			loc_current_entry, loc_path = apply_field(location_entry, [u'Seq-feat_location', u'Seq-loc', u'Seq-loc_int', u'Seq-interval', u'Seq-interval_to'], current_path)
+#			sequence_to = loc_current_entry
+
+#			ret[key] = [sequence_from, sequence_to]
 
 		return ret
 
@@ -1174,6 +1276,13 @@ def test():
 
 	print '--------GET INFO--------------------'
 	mi = MutationInfo()
+
+	print '====='
+	print mi._get_sequence_features_from_genbank('/Users/alexandroskanterakis/Downloads/NT_005120.15.gb', gene='UGT1A1')
+	print '====='
+	print mi._get_sequence_features_from_genbank('/Users/alexandroskanterakis/Library/Application Support/MutationInfo/transcripts/M61857.1.gb')
+
+	a=1/0
 
 	#Check XML parsers
 	hgvs_transcripts = ['NM_052896.3', 'M61857.1']
