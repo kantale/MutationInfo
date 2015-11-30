@@ -19,6 +19,8 @@ from appdirs import *
 # Importing: https://bitbucket.org/biocommons/hgvs
 import hgvs as hgvs_biocommons
 import hgvs.parser as hgvs_biocommons_parser
+import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+import hgvs.variantmapper as hgvs_biocommons_variantmapper 
 
 # Importing https://github.com/counsyl/hgvs 
 # How to setup data files : https://github.com/counsyl/hgvs/blob/master/examples/example1.py 
@@ -79,6 +81,12 @@ class MutationInfo(object):
 
 	ucsc_blat_url = 'https://genome.ucsc.edu/cgi-bin/hgBlat'
 
+	GrCh_genomes = {
+		'hg18' : 'GrCh36',
+		'hg19' : 'GRCh37',
+		'hg38' : 'GRCh38',
+	}
+
 	def __init__(self, local_directory=None, email=None, genome='hg19'):
 
 		#Check genome value
@@ -86,6 +94,9 @@ class MutationInfo(object):
 		if not match:
 			raise ValueError('genome parameter should be hgDD (for example hg18, hg19, hg38, ...)')
 		self.genome = genome
+		if not self.genome in self.GrCh_genomes:
+			raise KeyError('genome parameter: %s does not have an GrCh equivalent..' % (self.genome))
+		self.genome_GrCh = self.GrCh_genomes[self.genome]
 
 		#Get local directory
 		if local_directory is None:
@@ -127,6 +138,14 @@ class MutationInfo(object):
 			local_directory = self.local_directory,
 			genome = self.genome,
 			)
+
+		logging.info('Connecting to biocommons uta..')
+		self.biocommons_hdp = hgvs_biocommons_uta.connect()
+
+		# http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+		self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
+		self.biocommons_vm_blat = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='blat')
+		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -223,6 +242,18 @@ class MutationInfo(object):
 				'genome' : args[4]
 			}
 
+		def get_elements_from_hgvs(hgvs):
+			hgvs_transcript = hgvs.ac
+			hgvs_type = hgvs.type
+			hgvs_position = hgvs.posedit.pos.start.base
+			hgvs_reference = hgvs.posedit.edit.ref
+			if hasattr(hgvs.posedit.edit, 'alt'):
+				hgvs_alternative = hgvs.posedit.edit.alt
+			else:
+				hgvs_alternative = None
+
+			return hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
+
 		#Check the type of variant
 		if type(variant) is list:
 			ret = [self.get_info(v) for v in variant]
@@ -256,15 +287,36 @@ class MutationInfo(object):
 			return None
 
 		#Up to here we have managed to parse the variant
-		hgvs_transcript = hgvs.ac
-		hgvs_type = hgvs.type
-		hgvs_position = hgvs.posedit.pos.start.base
-		hgvs_reference = hgvs.posedit.edit.ref
-		if hasattr(hgvs.posedit.edit, 'alt'):
-			hgvs_alternative = hgvs.posedit.edit.alt
-		else:
-			hgvs_alternative = None
+		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs)
 
+		#Try to map the variant in the reference assembly with biocommons
+		if hgvs_type == 'c':
+			logging.info('Variant: %s . Trying to map variant in the reference assembly with biocommons' % (variant))
+			success = False
+
+			if not success:
+				try:
+					hgvs_reference_assembly = self.biocommons_vm_splign.c_to_g(hgvs)
+					success = True
+				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+					logging.warning('Variant: %s . Splign method method failed: %s' % (variant, str(e)))
+
+			if not success:
+				try:
+					hgvs_reference_assembly = self.biocommons_vm_blat.c_to_g(hgvs)
+					success = True
+				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+					logging.warning('Variant: %s . blat method method failed: %s' % (variant, str(e)))
+
+			if not success:
+				try:
+					hgvs_reference_assembly = self.biocommons_vm_genewise.c_to_g(hgvs)
+					success = True
+				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+					logging.warning('Variant: %s . Genewise method method failed: %s' % (variant, str(e)))
+
+			if success:
+				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
 
 		#Is this a reference assembly?
 		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
@@ -278,9 +330,7 @@ class MutationInfo(object):
 			ret = build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
 			return ret
 
-
-		#Converting the variant to VCF 
-		#Try pyhgvs 
+		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
 			return build_ret_dict(chrom, offset, ref, alt, self.genome)
@@ -291,7 +341,8 @@ class MutationInfo(object):
 		except IndexError as e:
 			logging.warning('Variant: %s . pyhgvs IndexError: %s' % (variant, str(e)))
 
-		logging.info('pyhgvs failed...')
+		logging.info('counsyl pyhgvs failed...')
+
 		logging.info('Fetching fasta sequence for trascript: %s' % (hgvs_transcript))
 		#fasta = self._get_fasta_from_nucleotide_entrez(hgvs_transcript)
 		fasta = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='fasta')
@@ -1142,6 +1193,7 @@ def test():
 	print mi.get_info('NC_000001.11:g.97593343C>A')
 	print mi.get_info('M61857.1:c.121A>G')
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
+	print mi.get_info('NT_005120.15:c.-1126C>T')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
