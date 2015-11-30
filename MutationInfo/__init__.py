@@ -788,6 +788,25 @@ class MutationInfo(object):
 			all_f_positions = get_positions(all_f_gene_features)
 			return all_f_positions
 
+		def make_ret_function(CDS):
+			start = CDS[0][0] + 1
+			end = CDS[-1][1]
+
+
+			def ret_f(c_pos):
+
+				if c_pos < 1:
+					return start + c_pos
+
+				previous_dif = 0
+				for CDS_position in CDS:
+					current_dif = CDS_position[1] - CDS_position[0]
+					if previous_dif <= c_pos <= previous_dif + current_dif:
+						return CDS_position[0] + c_pos - previous_dif 
+					previous_dif += current_dif
+				return CDS[-1][1] + c_pos - previous_dif 
+
+			return ret_f
 
 		with open(filename) as f:
 			records = list(SeqIO.parse(f, 'genbank'))
@@ -803,31 +822,13 @@ class MutationInfo(object):
 		if not CDS_positions is None and len(CDS_positions) == 0:
 			logging.warning('Genbank file %s . No CDS features found.' % (filename))
 
-		if CDS_positions:
-			start = CDS_positions[0][0] + 1
-			end = CDS_positions[-1][1]
-
-			print 'CDS START/END : %i/%i' % (start, end)
-
-			def ret_f(c_pos):
-				if c_pos < 1:
-					return start + c_pos
-
-				previous_dif = 0
-				for CDS_position in CDS_positions:
-					current_dif = CDS_position[1] - CDS_position[0]
-					if previous_dif <= c_pos <= previous_dif + current_dif:
-						return CDS_position[0] + c_pos - previous_dif 
-					previous_dif += current_dif
-				return CDS_positions[-1][1] + c_pos - previous_dif 
-
-			for i in range(-15, 2001):
-				print i, ret_f(i)
-
-			a=1/0
-
 		print 'CDS:', CDS_positions
 		print 'mRNA:', mRNA_positions
+
+		if CDS_positions:
+			return make_ret_function(CDS_positions)
+
+		return make_ret_function(mRNA_positions)
 
 	@staticmethod
 	def _get_sequence_features_from_XML_NCBI(filename):
