@@ -61,6 +61,9 @@ Notes:
     * https://mutalyzer.nl/name-checker?description=NT_005120.15%3Ag.-1126G%3ET 
 """
 
+class MutationInfoException(Exception):
+	pass
+
 class MutationInfo(object):
 	"""The MutationInfo class contains methods to get variant information 
 
@@ -86,6 +89,9 @@ class MutationInfo(object):
 		'hg19' : 'GRCh37',
 		'hg38' : 'GRCh38',
 	}
+
+	# Link taken from: http://www.lovd.nl/3.0/docs/LOVD_manual_3.0.pdf page 71 
+	lovd_genes_url = 'http://databases.lovd.nl/shared/api/rest.php/genes'
 
 	def __init__(self, local_directory=None, email=None, genome='hg19'):
 
@@ -147,6 +153,9 @@ class MutationInfo(object):
 		self.biocommons_vm_blat = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='blat')
 		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
 
+		# Set up LOVD data 
+		_lovd_setup()
+
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
 
@@ -204,7 +213,7 @@ class MutationInfo(object):
 		# The variant contains / in order to declare two possible substitutions 
 		search = re.search(r'([ACGT])>([ACGT])/([ACGT])', new_variant)
 		if search:
-			logging.warning('Variant: %s  . "/" found suggesting that this contains 2 variants' % (new_variant))
+			logging.warning('Variant: %s  . "/" found suggesting that it contains 2 variants' % (new_variant))
 			new_variant_1 = re.sub(r'([ACGT])>([ACGT])/([ACGT])', r'\1>\2', new_variant)
 			new_variant_2 = re.sub(r'([ACGT])>([ACGT])/([ACGT])', r'\1>\3', new_variant)
 			return [
@@ -833,7 +842,7 @@ class MutationInfo(object):
 	def _get_sequence_features_from_XML_NCBI(filename):
 		'''
 		DEPRECATED!! 
-		Use 
+		Use _get_sequence_features_from_genbank instead
 
 		Return all sequence features from XML NCBI file.
 		returns a dictionary with start and end positions of each feature
@@ -1013,6 +1022,73 @@ class MutationInfo(object):
 
 		return ret
 
+	def _lovd_setup(self):
+		import feedparser
+
+		self.lovd_directory = os.path.join(self.local_directory, 'LOVD')
+		logging.info('LOVD directory: %s' % (self.lovd_directory))
+		Utils.mkdir_p(self.lovd_directory)
+
+		self.lovd_genes_atom = os.path.join(self.lovd_directory, 'genes.atom')
+		logging.info('LOVD genes atom filename: %s' % (self.lovd_genes_atom))
+
+		#Check if genes_atom file exists
+		if not Utils.file_exists(self.lovd_genes_atom):
+			logging.info('File %s does not exist. Downloading from: %s' % (self.lovd_genes_atom, self.lovd_genes_url))
+			Utils.download(self.lovd_genes_url, self.lovd_genes_atom)
+
+		self.lovd_genes_json = os.path.join(self.lovd_directory, 'genes.json')
+		logging.info('LOVD gene json filename: %s' % (self.lovd_genes_json))
+		#Check if it exists
+		if Utils.file_exists(self.lovd_genes_json):
+			logging.info('LOVD gene json filename %s exists. Loading..' % (self.lovd_genes_json))
+			self.lovd_transcript_dict = Utils.load_json_filename(self.lovd_genes_json)
+			return
+
+		logging.info('LOVD gene json filename does not exist. Creating it..')
+
+		logging.info('Parsing LOVD genes file: %s ..' % (self.lovd_genes_html))
+		data = feedparser.parse(self.lovd_genes_html)
+
+		logging.info('Parsed LOVD genes file with %s entries' % (len(data['entries'])))
+
+		ret = {}
+		for entry_index, entry in enumerate(data['entries']):
+			summary = entry['summary']
+			
+		#	if entry_index % 100 == 0:
+		#		logging.info('Parsed entries: %i', entry_index)
+
+			# id:A1BG
+			search = re.search(r'id:([\w]+)', summary) 
+			if search is None:
+				message = 'Could not find ID in LOVD entry: %s' % (summary)
+				logging.error(message)
+				#This shouldn't happen..
+				raise MutationInfoException(message)
+			_id = search.group(1)
+
+			# refseq_mrna:NM_130786.3 
+			search = re.search(r'refseq_mrna:([\w_\.]+)', summary)
+			if search is None:
+				refseq_mrna = None
+				#message = 'Could not find refseq_mrna on LOVD entry: %s ' % (summary)
+				#logging.warning(message)
+				# This shouldn't happen
+				#raise MutationInfoException(message)
+			else:
+				refseq_mrna = search.group(1)
+				if refseq_mrna in ret:
+					message = 'mRNA Refseq entry %s is appeared in more than one genes: %s, %s' % (refseq_mrna, ret[refseq_mrna], _id)
+					logging.error(message)
+					raise MutationInfoException('Entr')
+				ret[refseq_mrna] = _id
+
+		self.lovd_transcript_dict = ret
+		logging.info('Built LOVD trascript dictionary')
+
+		logging.info('Saving to json file: %s' % (self.lovd_genes_json))
+		Utils.save_json_filenane(self.lovd_transcript_dict, self.lovd_genes_json)
 
 class Counsyl_HGVS(object):
 	'''
@@ -1289,6 +1365,10 @@ def test():
 
 	print '--------GET INFO--------------------'
 	mi = MutationInfo()
+
+	mi._lovd_locate_genes_from_transcripts('NM_000367.2')
+
+	a=1/0
 
 	print mi.get_info('NM_006446.4:c.1198T>G')
 	#print mi.get_info('XYZ_006446.4:c.1198T>G')

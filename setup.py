@@ -15,6 +15,7 @@ setup(name='MutationInfo',
             'biopython',
             'appdirs',
             'hgvs>=0.4,<0.5',
+            'feedparser',
       ],
       packages=['MutationInfo'],
 )
