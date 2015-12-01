@@ -1110,24 +1110,51 @@ class MutationInfo(object):
 
 		logging.info('Parsing XML atom file: %s' % (lovd_gene_filename))
 		data = feedparser.parse(lovd_gene_filename)
+
+
 		for entry_index, entry in enumerate(data['entries']):
 			#print entry.keys()
 			#print entry['content']
 			#print len(entry['content'])
 			#print entry['content'][0].keys()
-			print entry['content'][0]['value']
+			#print entry['content'][0]['value']
+			entry_value = entry['content'][0]['value']
 
-			#position_mRNA:NM_000367.2:c.*2240
-			position_mRNA =  [''.join(x.split(':')[1:]) for x in entry['content'][0]['value'].split('\n') if 'position_mRNA' in x][0]
+			# Example: position_mRNA:NM_000367.2:c.*2240
+			position_mRNA =  [''.join(x.split(':')[1:]) for x in entry_value.split('\n') if 'position_mRNA' in x][0]
 
 			# Variant/DNA:c.*2240A>T
-			variant_DNA = [x.split(':')[1] for x in entry['content'][0]['value'].split('\n') if 'Variant/DNA' in x][0]
+			variant_DNA = [x.split(':')[1] for x in entry_value.split('\n') if 'Variant/DNA' in x][0]
 
+			# Match: 
 			# position_genomic:chr6:18155397
 			# position_genomic:chr6:18155437_18155384 
-			print position_mRNA, variant_DNA
+			search = re.search(r'position_genomic:chr([\w]+):([\w\?]+)|position_genomic:chr([\w]+):([\w]+)_([\w]+)', entry_value)
+			if search is None:
+				logging.warning('Filename: %s Could not find position_genomic in entry: %s' % (lovd_gene_filename, entry))
+				continue
 
+			#print position_mRNA, variant_DNA, position_genomic
+			#print position_mRNA, variant_DNA, variation
+			if variant_DNA == variation:
+				#print entry_value
+				chrom = search.group(1)
+				pos_1 = search.group(2)
+				if pos_1 == '?':
+					pos_1 = None
+				else:
+					pos_1 = int(pos_1)
 
+				if len(search.groups()) == 4:
+					pos_2 = int(search.group(3))
+				else:
+					pos_2 = None
+				
+				logging.info('Found: Chrom: %s  pos_1: %s  pos_2: %s' % (str(chrom), str(pos_1), str(pos_2)))
+				return chrom, pos_1, pos_2
+
+		logging.error('Could not find %s:%s in file: %s' % (transcript, variation, lovd_gene_filename))
+		return None, None, None
 
 
 class Counsyl_HGVS(object):
@@ -1407,7 +1434,7 @@ def test():
 	mi = MutationInfo()
 	print mi.lovd_transcript_dict['NM_000367.2']
 
-	mi._search_lovd('NM_000367.2', 'c.-178C>T')
+	chrom, pos_1, pos_2 = mi._search_lovd('NM_000367.2', 'c.-178C>T')
 
 	a=1/0
 
