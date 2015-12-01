@@ -300,6 +300,9 @@ class MutationInfo(object):
 					success = True
 				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
 					logging.warning('Variant: %s . Splign method method failed: %s' % (variant, str(e)))
+				except hgvs_biocommons.exceptions.HGVSError as e:
+					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
+					return None
 
 			if not success:
 				try:
@@ -1297,6 +1300,7 @@ def test():
 	print mi.get_info('M61857.1:c.121A>G')
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
+	print mi.get_info('NM_000367.2:c.-178C>T')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
