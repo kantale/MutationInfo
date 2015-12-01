@@ -12,6 +12,7 @@ import logging
 import tarfile 
 import urllib2
 import requests
+import feedparser # For LOVD atom data 
 
 from Bio import Entrez, SeqIO
 from appdirs import *
@@ -92,6 +93,7 @@ class MutationInfo(object):
 
 	# Link taken from: http://www.lovd.nl/3.0/docs/LOVD_manual_3.0.pdf page 71 
 	lovd_genes_url = 'http://databases.lovd.nl/shared/api/rest.php/genes'
+	lovd_variants_url = 'http://databases.lovd.nl/shared/api/rest.php/variants/{gene}'
 
 	def __init__(self, local_directory=None, email=None, genome='hg19'):
 
@@ -154,7 +156,7 @@ class MutationInfo(object):
 		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
 
 		# Set up LOVD data 
-		_lovd_setup()
+		self._lovd_setup()
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -1023,7 +1025,6 @@ class MutationInfo(object):
 		return ret
 
 	def _lovd_setup(self):
-		import feedparser
 
 		self.lovd_directory = os.path.join(self.local_directory, 'LOVD')
 		logging.info('LOVD directory: %s' % (self.lovd_directory))
@@ -1047,8 +1048,8 @@ class MutationInfo(object):
 
 		logging.info('LOVD gene json filename does not exist. Creating it..')
 
-		logging.info('Parsing LOVD genes file: %s ..' % (self.lovd_genes_html))
-		data = feedparser.parse(self.lovd_genes_html)
+		logging.info('Parsing LOVD genes file: %s ..' % (self.lovd_genes_atom))
+		data = feedparser.parse(self.lovd_genes_atom)
 
 		logging.info('Parsed LOVD genes file with %s entries' % (len(data['entries'])))
 
@@ -1088,7 +1089,46 @@ class MutationInfo(object):
 		logging.info('Built LOVD trascript dictionary')
 
 		logging.info('Saving to json file: %s' % (self.lovd_genes_json))
-		Utils.save_json_filenane(self.lovd_transcript_dict, self.lovd_genes_json)
+		Utils.save_json_filenane(self.lovd_genes_json, self.lovd_transcript_dict)
+
+	def _search_lovd(self, transcript, variation):
+
+		if not transcript in self.lovd_transcript_dict:
+			logging.warning('Transcript %s does not appear to be in LOVD' % (transcript))
+			return None
+
+		gene = self.lovd_transcript_dict[transcript]
+		lovd_gene_url = self.lovd_variants_url.format(gene=gene)
+		lovd_gene_filename = os.path.join(self.lovd_directory, gene + '.atom')
+		logging.info('LOVD entry for trascript %s is gene %s ' % (transcript, gene))
+		logging.info('Looking for LOVD file: %s' % (lovd_gene_filename))
+		if not Utils.file_exists(lovd_gene_filename):
+			logging.info('Filename: %s does not exist . Downloading from: %s' % (lovd_gene_filename, lovd_gene_url))
+			Utils.download(lovd_gene_url, lovd_gene_filename)
+		else:
+			logging.info('Filename: %s exists' % (lovd_gene_filename))
+
+		logging.info('Parsing XML atom file: %s' % (lovd_gene_filename))
+		data = feedparser.parse(lovd_gene_filename)
+		for entry_index, entry in enumerate(data['entries']):
+			#print entry.keys()
+			#print entry['content']
+			#print len(entry['content'])
+			#print entry['content'][0].keys()
+			print entry['content'][0]['value']
+
+			#position_mRNA:NM_000367.2:c.*2240
+			position_mRNA =  [''.join(x.split(':')[1:]) for x in entry['content'][0]['value'].split('\n') if 'position_mRNA' in x][0]
+
+			# Variant/DNA:c.*2240A>T
+			variant_DNA = [x.split(':')[1] for x in entry['content'][0]['value'].split('\n') if 'Variant/DNA' in x][0]
+
+			# position_genomic:chr6:18155397
+			# position_genomic:chr6:18155437_18155384 
+			print position_mRNA, variant_DNA
+
+
+
 
 class Counsyl_HGVS(object):
 	'''
@@ -1365,8 +1405,9 @@ def test():
 
 	print '--------GET INFO--------------------'
 	mi = MutationInfo()
+	print mi.lovd_transcript_dict['NM_000367.2']
 
-	mi._lovd_locate_genes_from_transcripts('NM_000367.2')
+	mi._search_lovd('NM_000367.2', 'c.-178C>T')
 
 	a=1/0
 
