@@ -175,7 +175,7 @@ class MutationInfo(object):
 			return None
 
 	@staticmethod
-	def fuzzy_hgvs_corrector(variant, transcript=None, ref_type=None):
+	def fuzzy_hgvs_corrector(variant, transcript=None, ref_type=None, **kwargs):
 		"""
 		Try to correct a wrong HGVS-ish variant by checking if it matches some patterns with common mistakes.
 		Following directions from here: http://www.hgvs.org/mutnomen/recs-DNA.html#sub
@@ -293,44 +293,39 @@ class MutationInfo(object):
 				hgvs = MutationInfo.biocommons_parse(new_variant)
 
 		if hgvs is None:
+			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
+			a=1/0
 			#Parsing failed again.. Nothing to do..
-			logging.error('Failed to parse variant: %s . Returning None' % (variant))
+			logging.error('Biocommons failed to parse variant: %s . Returning None' % (variant))
 			return None
 
 		#Up to here we have managed to parse the variant
 		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs)
+
 
 		#Try to map the variant in the reference assembly with biocommons
 		if hgvs_type == 'c':
 			logging.info('Variant: %s . Trying to map variant in the reference assembly with biocommons' % (variant))
 			success = False
 
-			if not success:
+			for biocommons_vm_name, biocommons_vm_method in [
+					('splign', self.biocommons_vm_splign), 
+					('blat', self.biocommons_vm_blat), 
+					('genewise', self.biocommons_vm_genewise),
+				]:
+
 				try:
-					hgvs_reference_assembly = self.biocommons_vm_splign.c_to_g(hgvs)
+					logging.info('Tring biocommon method: %s' % (biocommons_vm_name))
+					hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
+					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
 					success = True
 				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . Splign method method failed: %s' % (variant, str(e)))
+					logging.warning('Variant: %s . %s method method failed: %s' % (variant, biocommons_vm_name, str(e)))
 				except hgvs_biocommons.exceptions.HGVSError as e:
 					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
-					return None
 
-			if not success:
-				try:
-					hgvs_reference_assembly = self.biocommons_vm_blat.c_to_g(hgvs)
-					success = True
-				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . blat method method failed: %s' % (variant, str(e)))
-
-			if not success:
-				try:
-					hgvs_reference_assembly = self.biocommons_vm_genewise.c_to_g(hgvs)
-					success = True
-				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . Genewise method method failed: %s' % (variant, str(e)))
-
-			if success:
-				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
+				if success:
+					break
 
 		#Is this a reference assembly?
 		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
@@ -344,6 +339,8 @@ class MutationInfo(object):
 			ret = build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
 			return ret
 
+		logging.info('Biocommons Failed')
+
 		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
@@ -356,6 +353,14 @@ class MutationInfo(object):
 			logging.warning('Variant: %s . pyhgvs IndexError: %s' % (variant, str(e)))
 
 		logging.info('counsyl pyhgvs failed...')
+
+		logging.info('Trying LOVD..')
+		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
+		if not lovd_chrom is None:
+			logging.warning('***SERIOUS*** strand of variant has not been checked!')
+			return build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome)
+
+		logging.info('LOVD failed..')
 
 		logging.info('Fetching fasta sequence for trascript: %s' % (hgvs_transcript))
 		#fasta = self._get_fasta_from_nucleotide_entrez(hgvs_transcript)
@@ -1069,6 +1074,16 @@ class MutationInfo(object):
 				raise MutationInfoException(message)
 			_id = search.group(1)
 
+			# refseq_build:hg19
+			search = re.search(r'refseq_build:([\w]+)', summary)
+			if search is None:
+				message = 'Could not find refseq_build in LOVD entry: %s' % (summary)
+				logging.error(message)
+				refseq_build = None
+			else:
+				refseq_build = search.group(1)
+
+
 			# refseq_mrna:NM_130786.3 
 			search = re.search(r'refseq_mrna:([\w_\.]+)', summary)
 			if search is None:
@@ -1083,7 +1098,7 @@ class MutationInfo(object):
 					message = 'mRNA Refseq entry %s is appeared in more than one genes: %s, %s' % (refseq_mrna, ret[refseq_mrna], _id)
 					logging.error(message)
 					raise MutationInfoException('Entr')
-				ret[refseq_mrna] = _id
+				ret[refseq_mrna] = [_id, refseq_build]
 
 		self.lovd_transcript_dict = ret
 		logging.info('Built LOVD trascript dictionary')
@@ -1095,9 +1110,9 @@ class MutationInfo(object):
 
 		if not transcript in self.lovd_transcript_dict:
 			logging.warning('Transcript %s does not appear to be in LOVD' % (transcript))
-			return None
+			return None, None, None, None
 
-		gene = self.lovd_transcript_dict[transcript]
+		gene, genome = self.lovd_transcript_dict[transcript]
 		lovd_gene_url = self.lovd_variants_url.format(gene=gene)
 		lovd_gene_filename = os.path.join(self.lovd_directory, gene + '.atom')
 		logging.info('LOVD entry for trascript %s is gene %s ' % (transcript, gene))
@@ -1137,7 +1152,7 @@ class MutationInfo(object):
 			#print position_mRNA, variant_DNA, position_genomic
 			#print position_mRNA, variant_DNA, variation
 			if variant_DNA == variation:
-				#print entry_value
+				logging.info('Found LOVD entry: \n%s' % entry_value)
 				chrom = search.group(1)
 				pos_1 = search.group(2)
 				if pos_1 == '?':
@@ -1150,11 +1165,11 @@ class MutationInfo(object):
 				else:
 					pos_2 = None
 				
-				logging.info('Found: Chrom: %s  pos_1: %s  pos_2: %s' % (str(chrom), str(pos_1), str(pos_2)))
-				return chrom, pos_1, pos_2
+				logging.info('Found: Chrom: %s  pos_1: %s  pos_2: %s Genome: %s' % (str(chrom), str(pos_1), str(pos_2), genome))
+				return chrom, pos_1, pos_2, genome
 
 		logging.error('Could not find %s:%s in file: %s' % (transcript, variation, lovd_gene_filename))
-		return None, None, None
+		return None, None, None, None
 
 
 class Counsyl_HGVS(object):
@@ -1430,13 +1445,18 @@ def test():
 	print '--------HGVS PARSER-----------------'
 	print MutationInfo.biocommons_parse('unparsable')
 
-	print '--------GET INFO--------------------'
 	mi = MutationInfo()
+	print mi.get_info('NT_005120.15:g.608362T>G')
+	#print mi.get_info('NT_005120.15:c.IVS1-72T>G')
+
+	a = 1/0
+
+	print '--------LOVD------------------------'
 	print mi.lovd_transcript_dict['NM_000367.2']
+	chrom, pos_1, pos_2, genome = mi._search_lovd('NM_000367.2', 'c.-178C>T')
 
-	chrom, pos_1, pos_2 = mi._search_lovd('NM_000367.2', 'c.-178C>T')
+	print '--------GET INFO--------------------'
 
-	a=1/0
 
 	print mi.get_info('NM_006446.4:c.1198T>G')
 	#print mi.get_info('XYZ_006446.4:c.1198T>G')
@@ -1449,6 +1469,7 @@ def test():
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 	print mi.get_info('NM_000367.2:c.-178C>T')
+	print mi.get_info('NT_005120.15:c.IVS1-72T>G')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
