@@ -8,6 +8,7 @@ import json
 import time
 import errno
 import shutil
+import urllib
 import logging
 import tarfile 
 import urllib2
@@ -95,6 +96,8 @@ class MutationInfo(object):
 	lovd_genes_url = 'http://databases.lovd.nl/shared/api/rest.php/genes'
 	lovd_variants_url = 'http://databases.lovd.nl/shared/api/rest.php/variants/{gene}'
 
+	mutalyzer_url = 'https://mutalyzer.nl/name-checker?description={variant}'
+
 	def __init__(self, local_directory=None, email=None, genome='hg19'):
 
 		#Check genome value
@@ -157,6 +160,11 @@ class MutationInfo(object):
 
 		# Set up LOVD data 
 		self._lovd_setup()
+
+		# Set up mutalizer
+		self.mutalyzer_directory = os.path.join(self.local_directory, 'mutalyzer')
+		Utils.mkdir_p(self.mutalyzer_directory)
+		logging.info('Mutalyzer directory: %s' % (self.mutalyzer_directory))
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -293,11 +301,16 @@ class MutationInfo(object):
 				hgvs = MutationInfo.biocommons_parse(new_variant)
 
 		if hgvs is None:
-			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-			a=1/0
-			#Parsing failed again.. Nothing to do..
-			logging.error('Biocommons failed to parse variant: %s . Returning None' % (variant))
-			return None
+			#Parsing failed again.. 
+			logging.warning('Biocommons failed to parse variant: %s .' % (variant))
+
+			logging.info('Variant: %s . Trying to reparse with Mutaluzer and get the genomic description' % (variant))
+			new_variant = self._search_mutalyzer(variant, **kwargs)
+			if new_variant is None:
+				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
+				return None
+			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))
+			return self.get_info(new_variant)
 
 		#Up to here we have managed to parse the variant
 		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs)
@@ -315,7 +328,7 @@ class MutationInfo(object):
 				]:
 
 				try:
-					logging.info('Tring biocommon method: %s' % (biocommons_vm_name))
+					logging.info('Trying biocommon method: %s' % (biocommons_vm_name))
 					hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
 					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
 					success = True
@@ -1171,6 +1184,58 @@ class MutationInfo(object):
 		logging.error('Could not find %s:%s in file: %s' % (transcript, variation, lovd_gene_filename))
 		return None, None, None, None
 
+	def _search_mutalyzer(self, variant, gene=None, **kwargs):
+		'''
+		'''
+
+		#Check if gene is defined
+		if not gene is None:
+			if not gene in variant:
+				#we need to change the name of the variant.
+				variant_splitted = variant.split(':')
+				if len(variant_splitted) != 2:
+					logging.error('More than one (or none) ":" characters detected in variant: %s' % (variant))
+					return None
+				new_variant = variant_splitted[0] + '(' + str(gene) + '):' + variant_splitted[1]
+				logging.info('Mutalyzer. Changed variant name from %s to %s' % (variant, new_variant))
+				variant = new_variant
+
+		variant_url_encode = urllib.quote(variant)
+		variant_filename = os.path.join(self.mutalyzer_directory, variant_url_encode + '.html')
+		logging.info('Variant: %s . Mutalyzer variant filename: %s' % (variant, variant_filename))
+		if not Utils.file_exists(variant_filename):
+			logging.info('Variant: %s . Mutalyzer variant filename: %s does not exist. Creating it..' % (variant, variant_filename))
+			variant_url = self.mutalyzer_url.format(variant=variant_url_encode)
+			logging.info('Variant: %s . Variant Mutalyzer url: %s' % (variant, variant_url))
+			Utils.download(variant_url, variant_filename)
+
+			#Check for errors
+			with open(variant_filename) as f:
+				soup = BeautifulSoup(f)
+
+			alert_danger = soup.find_all(class_="alert alert-danger")
+			if len(alert_danger) > 0:
+				logging.error('Variant: %s Mutaluzer returned the following critical error:' % (variant))
+				logging.error(alert_danger[0].text)
+				logging.error('Variant file will not be saved')
+				os.remove(variant_filename)
+				return None
+
+		logging.info('Variant: %s . Mutalyzer file: %s exists (or created). Parsing..' % (variant, variant_filename))
+		with open(variant_filename) as f:
+			soup = BeautifulSoup(f)
+
+		description = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[0].text
+		logging.info('Variant: %s . Found description: %s' % (variant, description))
+
+		new_variant_url = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code.a.get('href')
+		logging.info('Variant: %s . Found new variant url: %s' % (variant, new_variant_url))
+
+		new_variant = new_variant_url.split('=')[1]
+		new_variant = urllib.unquote(new_variant)
+		logging.info('Variant: %s . Found Genomic description: %s' % (variant, new_variant))
+
+		return new_variant
 
 class Counsyl_HGVS(object):
 	'''
@@ -1446,10 +1511,9 @@ def test():
 	print MutationInfo.biocommons_parse('unparsable')
 
 	mi = MutationInfo()
-	print mi.get_info('NT_005120.15:g.608362T>G')
-	#print mi.get_info('NT_005120.15:c.IVS1-72T>G')
 
-	a = 1/0
+	print '-------Mutalyzer---------------------'
+	print mi._search_mutalyzer('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
 
 	print '--------LOVD------------------------'
 	print mi.lovd_transcript_dict['NM_000367.2']
@@ -1469,7 +1533,7 @@ def test():
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 	print mi.get_info('NM_000367.2:c.-178C>T')
-	print mi.get_info('NT_005120.15:c.IVS1-72T>G')
+	print mi.get_info('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
