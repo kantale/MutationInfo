@@ -179,7 +179,7 @@ class MutationInfo(object):
 		try:
 			return MutationInfo.biocommons_parser.parse_hgvs_variant(variant)
 		except hgvs_biocommons.exceptions.HGVSParseError as e:
-			logging.warning('Could not parse variant:  %s . Error: %s' % (str(variant), str(e)))
+			logging.warning('Biocommons could not parse variant:  %s . Error: %s' % (str(variant), str(e)))
 			return None
 
 	@staticmethod
@@ -233,10 +233,19 @@ class MutationInfo(object):
 		# Case 3
 		# -1126(C>T) 
 		# The variant contains parenthesis in the substitition
-		search = re.search(r'[\d]+\([ACGT]>[ACGT]\)', new_variant)
+		search = re.search(r'[\d]+\([ACGT]+>[ACGT]+\)', new_variant)
 		if search:
 			logging.warning('Variant: %s   . Contains parenthesis around substitition. Removing the parenthesis' % (new_variant))
-			new_variant = re.sub(r'([\d]+)\(([ACGT])>([ACGT])\)', r'\1\2>\3', new_variant)
+			new_variant = re.sub(r'([\d]+)\(([ACGT]+)>([ACGT]+)\)', r'\1\2>\3', new_variant)
+
+		#Case 4
+		# NT_005120.15:c.1160CC>GT -->  NT_005120.15(UGT1A1):c.1160_1161delinsGT 
+		search =re.search(r'([\-\d]+)([ACGT]+)>([ACGT]+)', new_variant)
+		if search:
+			if len(search.group(2)) > 1 or len(search.group(3)) > 1:
+				logging.warning('Variant: %s   . Improper substitition please see: http://www.hgvs.org/mutnomen/recs-DNA.html#sub' % (new_variant))
+				to_substitute = str(int(search.group(1))) + '_' + str(int(search.group(1)) + len(search.group(2)) -1 ) + 'delins' + search.group(3)
+				new_variant = re.sub(r'([\-\d]+)([ACGT]+)>([ACGT]+)', to_substitute, new_variant)
 
 		return new_variant
 
@@ -299,6 +308,7 @@ class MutationInfo(object):
 				return [get_info(v) for v in new_variant]
 			elif type(new_variant) is str:
 				hgvs = MutationInfo.biocommons_parse(new_variant)
+				variant = new_variant
 
 		if hgvs is None:
 			#Parsing failed again.. 
@@ -310,7 +320,7 @@ class MutationInfo(object):
 				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
 				return None
 			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))
-			return self.get_info(new_variant)
+			return self.get_info(new_variant, **kwargs)
 
 		#Up to here we have managed to parse the variant
 		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs)
@@ -1215,7 +1225,7 @@ class MutationInfo(object):
 
 			alert_danger = soup.find_all(class_="alert alert-danger")
 			if len(alert_danger) > 0:
-				logging.error('Variant: %s Mutaluzer returned the following critical error:' % (variant))
+				logging.error('Variant: %s Mutalyzer returned the following critical error:' % (variant))
 				logging.error(alert_danger[0].text)
 				logging.error('Variant file will not be saved')
 				os.remove(variant_filename)
@@ -1506,6 +1516,8 @@ def test():
 	print MutationInfo.fuzzy_hgvs_corrector('1387C->T/A', transcript='NM_001042351.1', ref_type='c')
 
 	print MutationInfo.fuzzy_hgvs_corrector('-1923(A>C)', transcript='NT_005120.15', ref_type='g')
+
+	print MutationInfo.fuzzy_hgvs_corrector('NT_005120.15:c.1160(CC>GT)')
 
 	print '--------HGVS PARSER-----------------'
 	print MutationInfo.biocommons_parse('unparsable')
