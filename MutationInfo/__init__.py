@@ -101,6 +101,11 @@ class MutationInfo(object):
 	mutalyzer_url = 'https://mutalyzer.nl/name-checker?description={variant}'
 
 	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp142'):
+		'''
+		Current dbSNP version be default is 142 : 
+		    http://genome.ucsc.edu/goldenPath/newsarch.html
+		    11 February 2015 - dbSNP 142 Available for hg19 and hg38
+		'''
 
 		#Check genome value
 		match = re.match(r'hg[\d]+', genome)
@@ -1262,7 +1267,10 @@ class MutationInfo(object):
 		return new_variant
 
 	def _search_ucsc(self, variant):
-		#Variant should be an rs variant
+		'''
+		Adapted from: https://www.biostars.org/p/59249/ 
+		Variant should be an rs variant
+		'''
 
 		results = list(self.ucsc_dbsnp.filter_by(name=variant))
 
