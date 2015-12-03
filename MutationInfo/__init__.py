@@ -1360,25 +1360,25 @@ class Counsyl_HGVS(object):
 			return self.transcripts.get(name)
 
 	def _install_fasta_files(self):
-		fasta_filename_tar_gz = os.path.join(fasta_directory, 'chromFa.tar.gz')
-		fasta_filename_tar = os.path.join(fasta_directory, 'chromFa.tar')
+		fasta_filename_tar_gz = os.path.join(self.fasta_directory, 'chromFa.tar.gz')
+		fasta_filename_tar = os.path.join(self.fasta_directory, 'chromFa.tar')
 		fasta_url = self.fasta_url_pattern.format(genome=self.genome)
 		logging.info('Downloading from: %s' % fasta_url)
 		logging.info('Downloading to: %s' % fasta_filename_tar_gz)
 
-		Utils.mkdir_p(fasta_directory)
+		Utils.mkdir_p(self.fasta_directory)
 		Utils.download(fasta_url, fasta_filename_tar_gz)
 
 		logging.info('Unzipping to: %s' % fasta_filename_tar)
 		Utils.gunzip(fasta_filename_tar_gz, fasta_filename_tar)
 
-		logging.info('Untar to: %s' % fasta_directory)
-		Utils.untar(fasta_filename_tar, fasta_directory)
+		logging.info('Untar to: %s' % self.fasta_directory)
+		Utils.untar(fasta_filename_tar, self.fasta_directory)
 
 		logging.info('Merging *.fa to %s.fa' % (self.genome))
-		all_fasta_filenames_glob = os.path.join(fasta_directory, 'chr*.fa')
+		all_fasta_filenames_glob = os.path.join(self.fasta_directory, 'chr*.fa')
 		all_fasta_filenames = glob.glob(all_fasta_filenames_glob)
-		Utils.cat_filenames(all_fasta_filenames, fasta_filename)
+		Utils.cat_filenames(all_fasta_filenames, self.fasta_filename)
 
 		logging.info('Downloading refGene')
 		logging.info('Downloading from: %s' % self.refseq_url)

@@ -29,6 +29,7 @@ except ImportError as e:
 		else:
 			print 'Trying to run gcc produced the following error: %s' % (str(e))
 			print 'Not being able to run gcc might be a problem when installing biopython'
+		print '********************'
 
 
 setup(name='MutationInfo',
