@@ -1337,7 +1337,7 @@ class Counsyl_HGVS(object):
 		self.refseq_filename = os.path.join(self.local_directory, 'genes.refGene')
 		if not Utils.file_exists(self.fasta_filename):
 			logging.info('Could not find fasta filename: %s' % self.fasta_filename)
-			_install_fasta_files()
+			self._install_fasta_files()
 		else:
 			logging.info('Found fasta filename: %s' % self.fasta_filename)
 
