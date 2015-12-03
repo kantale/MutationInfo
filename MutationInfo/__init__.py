@@ -51,7 +51,7 @@ TODO:
 * More documentation   http://thomas-cokelaer.info/tutorials/sphinx/docstring_python.html 
 * Fix setup.py http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
 * Add hgvs_counsyl installation and automate these steps: https://github.com/counsyl/hgvs/blob/master/examples/example1.py  
-    * Automate steps: Done
+	* Automate steps: Done
 * Maybe import inline for performance reasons? http://stackoverflow.com/questions/477096/python-import-coding-style 
 
 Notes:
@@ -59,10 +59,10 @@ Notes:
   Contains a list of all accession codes of NCBI  
 * Interesting: M61857.1 Crashes mutalyzer.nl   
 * None of the three methods of VariantMapper can convert from c. to g. 
-    * http://hgvs.readthedocs.org/en/latest/modules/mapping.html#module-hgvs.variantmapper
+	* http://hgvs.readthedocs.org/en/latest/modules/mapping.html#module-hgvs.variantmapper
 * Clinvar : http://www.ncbi.nlm.nih.gov/clinvar/?term=M61857.1%3Ac.121A%3EG Could not identify variant M61857.1:c.121A>G 
 * Interesting: NT_005120.15:g.-1126G>T is the same as NT_005120.15:g.1126G>T in mutalyzer 
-    * https://mutalyzer.nl/name-checker?description=NT_005120.15%3Ag.-1126G%3ET 
+	* https://mutalyzer.nl/name-checker?description=NT_005120.15%3Ag.-1126G%3ET 
 """
 
 class MutationInfoException(Exception):
@@ -76,7 +76,7 @@ class MutationInfo(object):
 	_properties_file = 'properties.json'
 	biocommons_parser = hgvs_biocommons_parser.Parser() # https://bitbucket.org/biocommons/hgvs 
 
- 	# This is the size of the sequence, left and right to the variant 
+	# This is the size of the sequence, left and right to the variant 
 	# position that we will attempt to perform a blat search on the
 	# Reference genome
 	# Accordint to this: https://genome.ucsc.edu/goldenPath/help/hgTracksHelp.html
@@ -103,8 +103,8 @@ class MutationInfo(object):
 	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp142'):
 		'''
 		Current dbSNP version be default is 142 : 
-		    http://genome.ucsc.edu/goldenPath/newsarch.html
-		    11 February 2015 - dbSNP 142 Available for hg19 and hg38
+			http://genome.ucsc.edu/goldenPath/newsarch.html
+			11 February 2015 - dbSNP 142 Available for hg19 and hg38
 		'''
 
 		#Check genome value
@@ -1546,6 +1546,18 @@ class ProgressBar:
 		print '\r', self,
 		sys.stdout.flush()
 		self.update_iteration(iter + 1)
+
+	def animate_noipython( self, iter ):
+		'''
+		https://github.com/tomevans/pyhm/blob/master/pyhm/ProgressBar.py
+		'''
+		if sys.platform.lower().startswith( 'win' ):
+			print self, '\r',
+		else:
+			print self, chr( 27 ) + '[A'
+		self.update_iteration( iter )
+		# time.sleep( 0.5 )
+
 
 	def update_iteration(self, elapsed_iter):
 		self.__update_amount((elapsed_iter / float(self.iterations)) * 100.0)
