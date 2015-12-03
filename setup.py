@@ -16,6 +16,7 @@ setup(name='MutationInfo',
             'appdirs',
             'hgvs>=0.4,<0.5',
             'feedparser',
+            'cruzdb',
       ],
       packages=['MutationInfo'],
 )

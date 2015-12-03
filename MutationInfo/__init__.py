@@ -32,6 +32,8 @@ from pygr.seqdb import SequenceFileDB
 # Use this package to retrieve genomic position for known refSeq entries.
 # MutationInfo comes to the rescue when pyhgvs fails
 
+from cruzdb import Genome as UCSC_genome # To Access UCSC https://pypi.python.org/pypi/cruzdb/ 
+
 from bs4 import BeautifulSoup 
 
 # For progress bar..
@@ -98,7 +100,7 @@ class MutationInfo(object):
 
 	mutalyzer_url = 'https://mutalyzer.nl/name-checker?description={variant}'
 
-	def __init__(self, local_directory=None, email=None, genome='hg19'):
+	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp142'):
 
 		#Check genome value
 		match = re.match(r'hg[\d]+', genome)
@@ -108,6 +110,12 @@ class MutationInfo(object):
 		if not self.genome in self.GrCh_genomes:
 			raise KeyError('genome parameter: %s does not have an GrCh equivalent..' % (self.genome))
 		self.genome_GrCh = self.GrCh_genomes[self.genome]
+
+		#Do a simple check in dbsnp_version
+		match = re.match(r'snp[\w]+', dbsnp_version)
+		if not match:
+			raise ValueError('dbsnp_version should be snpDDD (for example snp142)')
+		self.dbsnp_version = dbsnp_version
 
 		#Get local directory
 		if local_directory is None:
@@ -165,6 +173,11 @@ class MutationInfo(object):
 		self.mutalyzer_directory = os.path.join(self.local_directory, 'mutalyzer')
 		Utils.mkdir_p(self.mutalyzer_directory)
 		logging.info('Mutalyzer directory: %s' % (self.mutalyzer_directory))
+
+		# Set up cruzdb (UCSC)
+		logging.info('Setting up UCSC access..')
+		self.ucsc = UCSC_genome(self.genome)
+		self.ucsc_dbsnp = getattr(self.ucsc, self.dbsnp_version)
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -250,8 +263,17 @@ class MutationInfo(object):
 		return new_variant
 
 	def _get_info_rs(self, variant):
-		logging.error('Variant: %s Sorry.. info for rs variants are not yet implemented' % (variant))
-		return None
+		return self._search_ucsc(variant)
+
+	def _build_ret_dict(self, *args):
+		return {
+			'chrom' : args[0],
+			'offset' : args[1],
+			'ref' : args[2],
+			'alt' : args[3],
+			'genome' : args[4]
+		}
+
 
 	def get_info(self, variant, **kwargs):
 		"""
@@ -260,15 +282,6 @@ class MutationInfo(object):
 		:param variant: A variant or list of variants
 
 		"""
-
-		def build_ret_dict(*args):
-			return {
-				'chrom' : args[0],
-				'offset' : args[1],
-				'ref' : args[2],
-				'alt' : args[3],
-				'genome' : args[4]
-			}
 
 		def get_elements_from_hgvs(hgvs):
 			hgvs_transcript = hgvs.ac
@@ -297,7 +310,8 @@ class MutationInfo(object):
 		match = re.match(r'rs[\d]+', variant)
 		if match:
 			# This is an rs variant 
-			return self._get_info_rs()
+			logging.info('Variant %s is an rs variant. Looking at dbSNP..' % (variant))
+			return self._get_info_rs(variant)
 
 		#Is this an hgvs variant?
 		hgvs = MutationInfo.biocommons_parse(variant)
@@ -359,7 +373,7 @@ class MutationInfo(object):
 			if search is None:
 				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
 				return None
-			ret = build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
+			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
 			return ret
 
 		logging.info('Biocommons Failed')
@@ -367,7 +381,7 @@ class MutationInfo(object):
 		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-			return build_ret_dict(chrom, offset, ref, alt, self.genome)
+			return self._build_ret_dict(chrom, offset, ref, alt, self.genome)
 		except KeyError as e:
 			logging.warning('Variant: %s . pyhgvs KeyError: %s' % (variant, str(e)))
 		except ValueError as e:
@@ -381,7 +395,7 @@ class MutationInfo(object):
 		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
 		if not lovd_chrom is None:
 			logging.warning('***SERIOUS*** strand of variant has not been checked!')
-			return build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome)
+			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome)
 
 		logging.info('LOVD failed..')
 
@@ -503,7 +517,7 @@ class MutationInfo(object):
 			hgvs_reference = self._inverse(hgvs_reference)
 			hgvs_alternative = self._inverse(hgvs_alternative)
 
-		ret = build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome)
+		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome)
 		return ret
 
 	@staticmethod
@@ -1247,6 +1261,51 @@ class MutationInfo(object):
 
 		return new_variant
 
+	def _search_ucsc(self, variant):
+		#Variant should be an rs variant
+
+		results = list(self.ucsc_dbsnp.filter_by(name=variant))
+
+		ret = []
+
+		for result in results:
+			chrom = result.chrom
+			start = result.chromStart  
+			offset = result.chromEnd # This is the position reported from dbSNP
+			refNCBI = result.refNCBI
+			refUCSC = result.refUCSC
+
+			reference = refNCBI
+			if refNCBI != refUCSC:
+				logging.warning('Variant: %s has different reference in NCBI (%s) and UCSC (%s)' % (variant, refNCBI, refUCSC))
+				logging.warning('Keeping NCBI reference')
+			
+			observed = result.observed
+			observed_s = observed.split('/')
+			alternative = [x for x in observed_s if x != reference]
+			logging.info('Variant: %s . observed: %s alternate: %s' % (variant, observed, str(alternative)))
+			if len(alternative) == 1:
+				alternative = alternative[0]
+
+
+			ret.append(self._build_ret_dict(chrom, offset, reference, alternative, self.genome))
+
+		if len(ret) == 1:
+			return ret[0]
+
+		return ret
+
+	def _build_ret_dict(self, *args):
+		return {
+			'chrom' : args[0],
+			'offset' : args[1],
+			'ref' : args[2],
+			'alt' : args[3],
+			'genome' : args[4]
+		}
+
+
+
 class Counsyl_HGVS(object):
 	'''
 	Wrapper class for pyhgvs https://github.com/counsyl/hgvs 
@@ -1523,7 +1582,7 @@ def test():
 	print MutationInfo.biocommons_parse('unparsable')
 
 	mi = MutationInfo()
-
+	
 	print '-------Mutalyzer---------------------'
 	print mi._search_mutalyzer('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
 
@@ -1546,6 +1605,9 @@ def test():
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 	print mi.get_info('NM_000367.2:c.-178C>T')
 	print mi.get_info('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
+
+	# Testing rs SNPs
+	print mi.get_info('rs53576')
 
 	print '=' * 20
 	print 'TESTS FINISHED'
