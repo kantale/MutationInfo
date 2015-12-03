@@ -652,7 +652,7 @@ class MutationInfo(object):
 		'''
 
 		with open(input_filename) as f:
-			soup = BeautifulSoup(f)
+			soup = BeautifulSoup(f, 'html.parser')
 
 		header = soup.find_all('pre')[0].text.split('\n')[0].split()[1:]
 		header[header.index('START')] = 'RELATIVE_START'

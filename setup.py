@@ -25,7 +25,7 @@ except ImportError as e:
 		if e.errno == os.errno.ENOENT:
 			print 'Before installing biopython you may need to install a C compiler such as gcc.'
 			print 'gcc and other necessary libraries can be installed on Linux with the following command:'
-			print 'sudo apt-get install gcc python-dev libpq-dev python-pip '			
+			print 'sudo apt-get install gcc python-dev libpq-dev python-pip python-mysqldb-dbg'			
 		else:
 			print 'Trying to run gcc produced the following error: %s' % (str(e))
 			print 'Not being able to run gcc might be a problem when installing biopython'
