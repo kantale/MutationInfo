@@ -304,6 +304,10 @@ class MutationInfo(object):
 		if type(variant) is list:
 			ret = [self.get_info(v) for v in variant]
 			return ret
+		elif type(variant) is unicode:
+			logging.info('Converting variant: %s from unicode to str and rerunning..' % (variant))
+			ret = get_info(str(variant), **kwargs)
+			return ret
 		elif type(variant) is str:
 			#This is expected
 			pass
