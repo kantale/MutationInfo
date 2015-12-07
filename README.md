@@ -32,5 +32,9 @@ MutationInfo tries to infer the position, reference and alternative of a variant
 If all the aforementioned methods fail then download the FASTA sequence of the trascript of the variant from [NCBI database](http://www.ncbi.nlm.nih.gov/nuccore) and perform a [blat search](https://genome.ucsc.edu/cgi-bin/hgBlat?command=start) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
 
 ## Installation 
-Requires 13 GB disk space.
+To install MutationInfo, download the package and run:
+```bash
+python setup.py install
+```
+Important! Requires 13 GB of disk space.
 
