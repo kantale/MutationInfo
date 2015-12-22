@@ -45,6 +45,7 @@ except ImportError:
 
 
 __docformat__ = 'reStructuredText'
+__version__ = '0.0.1'
 
 """
 TODO: 
@@ -337,7 +338,7 @@ class MutationInfo(object):
 			#Parsing failed again.. 
 			logging.warning('Biocommons failed to parse variant: %s .' % (variant))
 
-			logging.info('Variant: %s . Trying to reparse with Mutaluzer and get the genomic description' % (variant))
+			logging.info('Variant: %s . Trying to reparse with Mutalyzer and get the genomic description' % (variant))
 			new_variant = self._search_mutalyzer(variant, **kwargs)
 			if new_variant is None:
 				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
@@ -523,14 +524,14 @@ class MutationInfo(object):
 		#Invert reference / alternative if sequence was located in negative strand 
 		if direction == '-':
 			# TODO : Reverse also sequence for deletions / additions 
-			hgvs_reference = self._inverse(hgvs_reference)
-			hgvs_alternative = self._inverse(hgvs_alternative)
+			hgvs_reference = self.inverse(hgvs_reference)
+			hgvs_alternative = self.inverse(hgvs_alternative)
 
 		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome)
 		return ret
 
 	@staticmethod
-	def _inverse(nucleotide):
+	def inverse(nucleotide):
 		inverter = {
 			'A' : 'T',
 			'T' : 'A',
@@ -542,7 +543,6 @@ class MutationInfo(object):
 			return None
 
 		return ''.join([inverter[x] for x in nucleotide.upper()])
-
 
 	def _create_blat_filename(self, transcript, chunk_start, chunk_end):
 		return os.path.join(self.blat_directory, 
@@ -1294,6 +1294,8 @@ class MutationInfo(object):
 			
 			observed = result.observed
 			observed_s = observed.split('/')
+			if result.strand == u'-':
+				observed_s = list([MutationInfo.inverse(x) for x in ''.join(observed_s)])
 			alternative = [x for x in observed_s if x != reference]
 			logging.info('Variant: %s . observed: %s alternate: %s' % (variant, observed, str(alternative)))
 			if len(alternative) == 1:
