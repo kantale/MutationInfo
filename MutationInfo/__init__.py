@@ -277,7 +277,8 @@ class MutationInfo(object):
 			'offset' : args[1],
 			'ref' : args[2],
 			'alt' : args[3],
-			'genome' : args[4]
+			'genome' : args[4],
+			'source' : args[5],
 		}
 
 
@@ -383,7 +384,7 @@ class MutationInfo(object):
 			if search is None:
 				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
 				return None
-			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2))
+			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'NC_transcript')
 			return ret
 
 		logging.info('Biocommons Failed')
@@ -391,7 +392,7 @@ class MutationInfo(object):
 		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-			return self._build_ret_dict(chrom, offset, ref, alt, self.genome)
+			return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
 		except KeyError as e:
 			logging.warning('Variant: %s . pyhgvs KeyError: %s' % (variant, str(e)))
 		except ValueError as e:
@@ -405,7 +406,7 @@ class MutationInfo(object):
 		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
 		if not lovd_chrom is None:
 			logging.warning('***SERIOUS*** strand of variant has not been checked!')
-			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome)
+			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD')
 
 		logging.info('LOVD failed..')
 
@@ -527,7 +528,7 @@ class MutationInfo(object):
 			hgvs_reference = self.inverse(hgvs_reference)
 			hgvs_alternative = self.inverse(hgvs_alternative)
 
-		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome)
+		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome, 'BLAT')
 		return ret
 
 	@staticmethod
@@ -1302,7 +1303,7 @@ class MutationInfo(object):
 				alternative = alternative[0]
 
 
-			ret.append(self._build_ret_dict(chrom, offset, reference, alternative, self.genome))
+			ret.append(self._build_ret_dict(chrom, offset, reference, alternative, self.genome, 'UCSC'))
 
 		if len(ret) == 1:
 			return ret[0]
@@ -1315,7 +1316,8 @@ class MutationInfo(object):
 			'offset' : args[1],
 			'ref' : args[2],
 			'alt' : args[3],
-			'genome' : args[4]
+			'genome' : args[4],
+			'source' : args[5],
 		}
 
 
