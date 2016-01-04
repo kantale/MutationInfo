@@ -1278,6 +1278,7 @@ class MutationInfo(object):
 		'''
 
 		results = list(self.ucsc_dbsnp.filter_by(name=variant))
+		logging.info('Variant: %s . Returned from UCSC filter_by: %s' % (str(variant), str(results)))
 
 		ret = []
 
@@ -1296,7 +1297,7 @@ class MutationInfo(object):
 			observed = result.observed
 			observed_s = observed.split('/')
 			if result.strand == u'-':
-				observed_s = list([MutationInfo.inverse(x) for x in ''.join(observed_s)])
+				observed_s = list([MutationInfo.inverse(x) if not x in ['-'] else '-' for x in ''.join(observed_s)]) # Do not invert '-'
 			alternative = [x for x in observed_s if x != reference]
 			logging.info('Variant: %s . observed: %s alternate: %s' % (variant, observed, str(alternative)))
 			if len(alternative) == 1:
@@ -1636,6 +1637,7 @@ def test():
 
 	# Testing rs SNPs
 	print mi.get_info('rs53576')
+	print mi.get_info('rs4646438') # insertion variation 
 
 	print '=' * 20
 	print 'TESTS FINISHED'
