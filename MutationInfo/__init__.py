@@ -327,10 +327,10 @@ class MutationInfo(object):
 		#Is this an hgvs variant?
 		hgvs = MutationInfo.biocommons_parse(variant)
 		if hgvs is None:
-			#Parsing failed. Trying to fix possible problems
+			logging.warning('Variant: %s . Biocommons parsing failed. Trying to fix possible problems..' % (str(variant)))
 			new_variant = MutationInfo.fuzzy_hgvs_corrector(variant, **kwargs)
 			if type(new_variant) is list:
-				return [get_info(v) for v in new_variant]
+				return [self.get_info(v) for v in new_variant]
 			elif type(new_variant) is str:
 				hgvs = MutationInfo.biocommons_parse(new_variant)
 				variant = new_variant
@@ -368,7 +368,7 @@ class MutationInfo(object):
 					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
 					success = True
 				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . %s method method failed: %s' % (variant, biocommons_vm_name, str(e)))
+					logging.warning('Variant: %s . %s method failed: %s' % (variant, biocommons_vm_name, str(e)))
 				except hgvs_biocommons.exceptions.HGVSError as e:
 					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
 
@@ -1235,6 +1235,10 @@ class MutationInfo(object):
 				variant = new_variant
 
 		variant_url_encode = urllib.quote(variant)
+		if '/' in variant_url_encode:
+			logging.error('Variant: %s . Variant contains character: "/" . Aborting.. ' % (str(variant_url_encode)) )
+			return None
+
 		variant_filename = os.path.join(self.mutalyzer_directory, variant_url_encode + '.html')
 		logging.info('Variant: %s . Mutalyzer variant filename: %s' % (variant, variant_filename))
 		if not Utils.file_exists(variant_filename):
@@ -1591,7 +1595,6 @@ def test():
 
 	logging.basicConfig(level=logging.INFO)
 
-
 	print '------FUZZY HGVS CORRECTOR---------'
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C')
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C', transcript='NM_001042351.1')
@@ -1602,6 +1605,7 @@ def test():
 	print MutationInfo.fuzzy_hgvs_corrector('1048G->C', transcript='NM_001042351.1', ref_type='c')
 
 	print MutationInfo.fuzzy_hgvs_corrector('1387C->T/A', transcript='NM_001042351.1', ref_type='c')
+	print MutationInfo.fuzzy_hgvs_corrector('1387C->T/A')
 
 	print MutationInfo.fuzzy_hgvs_corrector('-1923(A>C)', transcript='NT_005120.15', ref_type='g')
 
@@ -1621,7 +1625,8 @@ def test():
 
 	print '--------GET INFO--------------------'
 
-
+	print mi.get_info('1387C->T/A', transcript='NM_001042351.1', ref_type='c') # This should try first to correct 
+	print mi.get_info('1387C->T/A') # This should fail (return None)
 	print mi.get_info('NM_006446.4:c.1198T>G')
 	#print mi.get_info('XYZ_006446.4:c.1198T>G')
 	#print mi.get_info('NM_006446.4:c.456345635T>G')
