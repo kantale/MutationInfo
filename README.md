@@ -20,7 +20,9 @@ mi.get_info('NM_006446.4:c.1198T>G')
 
 MutationInfo tries to infer the position, reference and alternative of a variant through the following pipeline:
 
-* If the variant is in rs format, then access the [UCSC tables](https://genome.ucsc.edu/cgi-bin/hgTables) through the [cruzdb](https://pypi.python.org/pypi/cruzdb) package. 
+* If the variant is in rs format, then 
+    * Access the [UCSC tables](https://genome.ucsc.edu/cgi-bin/hgTables) through the [cruzdb](https://pypi.python.org/pypi/cruzdb) package. 
+    * If this fails then try the [Variant Effect Predictor](http://asia.ensembl.org/Tools/VEP) through the [pyVEP](https://github.com/kantale/pyVEP) package.
 * If the variant is in HGVS then:
     * Try to parse the variant with the [biocommon/hgvs](https://bitbucket.org/biocommons/hgvs) parser. 
     * If the parse fails then look if the variant contains some common mistakes in HGVS formatting. Correct if possible and then try again. For example remove parenthesis in the following variant: `NM_001042351.1:-1923(A>C)`

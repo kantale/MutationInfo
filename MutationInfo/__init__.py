@@ -34,6 +34,8 @@ from pygr.seqdb import SequenceFileDB
 
 from cruzdb import Genome as UCSC_genome # To Access UCSC https://pypi.python.org/pypi/cruzdb/ 
 
+from pyVEP import VEP # Variant Effect Predictor https://github.com/kantale/pyVEP 
+
 from bs4 import BeautifulSoup 
 
 # For progress bar..
@@ -322,7 +324,10 @@ class MutationInfo(object):
 		if match:
 			# This is an rs variant 
 			logging.info('Variant %s is an rs variant. Looking at dbSNP..' % (variant))
-			return self._get_info_rs(variant)
+			ret = self._get_info_rs(variant)
+			if not ret:
+				logging.warning('Variant: %s . UCSC Failed. Trying Variant Effect Predictor (VEP)' % (variant))
+				return self._search_VEP(variant)
 
 		#Is this an hgvs variant?
 		hgvs = MutationInfo.biocommons_parse(variant)
@@ -1315,6 +1320,62 @@ class MutationInfo(object):
 
 		return ret
 
+	def _search_VEP(self, variant):
+		'''
+		Variant Effect Predictor
+		'''
+
+		v = VEP(variant)
+		if not type(v) is list:
+			logging.error('Variant: %s . VEP did not return a list!' % (variant))
+			return None
+
+		if len(v) == 0:
+			logging.error('Variant: %s . VEP returned an empty list' % (variant))
+			return None
+
+		logging.info('Variant: %s . VEP returned %i results. Getting the info from the first' % (variant, len(v)))
+
+		allele_string = v[0]['allele_string']
+		logging.info('Variant: %s . Allele string: %s' % (variant, allele_string))
+		allele_string_s = allele_string.split('/')
+
+		# Looking for 'transcript_consequences'
+		variant_alleles = []
+		if 'transcript_consequences' in v[0]:
+			# Getting all variant alleles
+			for t_c in v[0]['transcript_consequences']:
+				if 'variant_allele' in t_c:
+					variant_alleles.append(t_c['variant_allele'])
+
+		#Get all different variant alleles
+		variant_alleles = list(set(variant_alleles))
+
+		if len(variant_alleles) > 1:
+			logging.warning('Variant: %s . More than one variant alleles found' % (variant))
+		if len(variant_alleles) == 0:
+			logging.warning('Variant: %s . No variant alleles found' % (variant))
+
+		reference = [x for x in allele_string_s if x not in variant_alleles]
+		if len(reference) == 1:
+			reference = reference[0]
+		elif len(reference) == 0:
+			reference = ''
+
+		if len(variant_alleles) == 1:
+			variant_alleles = variant_alleles[0]
+
+		arguments = [
+			v[0]['seq_region_name'], # chrom
+			v[0]['start'], # offset
+			reference, # ref
+			variant_alleles, # alt
+			v[0]['assembly_name'], # genome
+			'VEP', # source
+		]
+
+		return self._build_ret_dict(*arguments)
+
 	def _build_ret_dict(self, *args):
 		return {
 			'chrom' : args[0],
@@ -1615,6 +1676,8 @@ def test():
 	print MutationInfo.biocommons_parse('unparsable')
 
 	mi = MutationInfo()
+	print mi.get_info('rs305974')
+	a=1/0
 	
 	print '-------Mutalyzer---------------------'
 	print mi._search_mutalyzer('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
@@ -1643,6 +1706,8 @@ def test():
 	# Testing rs SNPs
 	print mi.get_info('rs53576')
 	print mi.get_info('rs4646438') # insertion variation 
+	print mi.get_info('rs305974') # This SNP is not in UCSC 
+
 
 	print '=' * 20
 	print 'TESTS FINISHED'
