@@ -1327,7 +1327,7 @@ class MutationInfo(object):
 
 		v = VEP(variant)
 		if not type(v) is list:
-			logging.error('Variant: %s . VEP did not return a list!' % (variant))
+			logging.error('Variant: %s . VEP did not return a list: %s' % (variant, str(v)))
 			return None
 
 		if len(v) == 0:
@@ -1707,7 +1707,7 @@ def test():
 	print mi.get_info('rs53576')
 	print mi.get_info('rs4646438') # insertion variation 
 	print mi.get_info('rs305974') # This SNP is not in UCSC 
-
+	print mi.get_info('rs773790593') # Both UCSC and VEP fail
 
 	print '=' * 20
 	print 'TESTS FINISHED'
