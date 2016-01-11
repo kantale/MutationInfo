@@ -60,7 +60,7 @@ setup(name='MutationInfo',
             'https://github.com/counsyl/hgvs/tarball/master#egg=pyhgvs-2.0.0',
             'https://github.com/kantale/pyVEP/tarball/master#egg=pyVEP-2.0.0',
       ],
-      packages=['MutationInfo'],
+      packages=['MutationInfo', 'biopython_mapper'],
 )
 
 
