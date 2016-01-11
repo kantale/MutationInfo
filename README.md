@@ -31,7 +31,10 @@ MutationInfo tries to infer the position, reference and alternative of a variant
     * If this method fails then use the [pyhgvs](https://github.com/counsyl/hgvs) package and the `hgvs_to_vcf` method to convert the variant in a [VCF](https://en.wikipedia.org/wiki/Variant_Call_Format) entry.
     * If this method fails then look at the [LOVD](http://www.lovd.nl/3.0/home) database.
 
-If all the aforementioned methods fail then download the FASTA sequence of the trascript of the variant from [NCBI database](http://www.ncbi.nlm.nih.gov/nuccore) and perform a [blat search](https://genome.ucsc.edu/cgi-bin/hgBlat?command=start) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
+If all the aforementioned methods fail then: 
+    * Download the FASTA sequence of the trascript of the variant from [NCBI database](http://www.ncbi.nlm.nih.gov/nuccore).
+    * If the position of the variant is in coding (c.) coordinated then convert to genomic (g.) coordinated. To do that, we use the [Coordinate mapper](https://github.com/lennax/biopython) addition of biopython.
+    * Perform a [blat search](https://genome.ucsc.edu/cgi-bin/hgBlat?command=start) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
 
 ## Installation 
 To install MutationInfo, download the package and run:
