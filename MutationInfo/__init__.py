@@ -32,6 +32,14 @@ from pygr.seqdb import SequenceFileDB
 # Use this package to retrieve genomic position for known refSeq entries.
 # MutationInfo comes to the rescue when pyhgvs fails
 
+# Github's User lennax has created a useful mapper from converting from c to g coordinates with biopython.
+# This library has not been incorporated in official biopython release (at least not to my knowledge)
+# So we include it manually here.
+# The mapper is available here: https://github.com/lennax/biopython/tree/f_loc5/Bio/SeqUtils/Mapper 
+# I have changed the name from mapper to biopython_mapper 
+# An example of how to use this mapper is here: https://gist.github.com/lennax/10600113 
+from biopython_mapper import CoordinateMapper 
+
 from cruzdb import Genome as UCSC_genome # To Access UCSC https://pypi.python.org/pypi/cruzdb/ 
 
 from pyVEP import VEP # Variant Effect Predictor https://github.com/kantale/pyVEP 
@@ -434,8 +442,14 @@ class MutationInfo(object):
 				genbank_gene = kwargs['gene']
 			else:
 				genbank_gene = None
-			genbank_c_to_g_mapper = self._get_sequence_features_from_genbank(genbank_filename, gene=genbank_gene)
+			#genbank_c_to_g_mapper = self._get_sequence_features_from_genbank(genbank_filename, gene=genbank_gene)
+			genbank_c_to_g_mapper = self._biopython_c2g_mapper(genbank_filename)
+
 			new_hgvs_position = genbank_c_to_g_mapper(int(hgvs_position))
+			if new_hgvs_position is None:
+				logging.error('Variant: %s . Could not infer a g. position' % (variant))
+				return None
+			new_hgvs_position = int(new_hgvs_position)
 			logging.info('Variant: %s . New hgvs g. position: %i   Old c. position: %i' % (variant, new_hgvs_position, hgvs_position))
 			hgvs_position = new_hgvs_position
 			hgvs_type = 'g'
@@ -797,9 +811,51 @@ class MutationInfo(object):
 		return ret
 
 	@staticmethod
+	def _biopython_c2g_mapper(filename):
+		'''
+		See comments at top!
+
+		Using this biopython mapper: https://github.com/lennax/biopython/tree/f_loc5/Bio/SeqUtils/Mapper
+		This code is adapted from: https://gist.github.com/lennax/10600113  
+		'''
+
+		def get_first_CDS(parser):
+			for rec in parser:
+				for feat in rec.features:
+					if feat.type == "CDS" and len(feat.location.parts) > 1:
+						return feat
+
+		def make_ret_function(cm):
+
+			def ret_f(c_pos):
+				try:
+					# Important: We assume that c_pos is 1-based
+					# Both input and output of the method are 0-based 
+					ret = cm.c2g(c_pos-1)+1
+				except IndexError as e:
+					logging.error('Could not convert from c. to g. Could not find position in exons. Error message: %s' % (str(e)))
+					return None
+
+				return ret
+
+			return ret_f
+
+		parser = SeqIO.parse(filename, "genbank")
+		exons = get_first_CDS(parser=parser)
+		cm = CoordinateMapper(exons)
+
+		return make_ret_function(cm=cm)
+
+
+	@staticmethod
 	def _get_sequence_features_from_genbank(filename, gene=None):
+		'''
+		DEPRECATED use _biopython_c2g_mapper instead
+		Get sequence features from genbank file.
+		'''
 
 		def get_feature_genes(features):
+			#feature_genes = [feature.qualifiers['gene'] for feature in features if 'gene' in feature.qualifiers]
 			feature_genes = [feature.qualifiers['gene'] for feature in features]
 			feature_genes_flat_set = list(set([y for x in feature_genes for y in x]))
 
@@ -889,8 +945,8 @@ class MutationInfo(object):
 		if not CDS_positions is None and len(CDS_positions) == 0:
 			logging.warning('Genbank file %s . No CDS features found.' % (filename))
 
-		print 'CDS:', CDS_positions
-		print 'mRNA:', mRNA_positions
+		logging.info('CDS: %s' % str(CDS_positions))
+		logging.info('mRNA: %s' % str(mRNA_positions))
 
 		if CDS_positions:
 			return make_ret_function(CDS_positions)
@@ -1676,8 +1732,6 @@ def test():
 	print MutationInfo.biocommons_parse('unparsable')
 
 	mi = MutationInfo()
-	print mi.get_info('rs305974')
-	a=1/0
 	
 	print '-------Mutalyzer---------------------'
 	print mi._search_mutalyzer('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
@@ -1698,6 +1752,8 @@ def test():
 	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
 	print mi.get_info('NC_000001.11:g.97593343C>A')
 	print mi.get_info('M61857.1:c.121A>G')
+	print mi.get_info('J02843.1:c.-1295G>C') # Test biopython c2g
+	print mi.get_info('J02843.1:c.7632T>A') # Test biopython c2g, this position is out of exon boundaries
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 	print mi.get_info('NM_000367.2:c.-178C>T')
