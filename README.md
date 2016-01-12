@@ -34,7 +34,7 @@ MutationInfo tries to infer the position, reference and alternative of a variant
 If all the aforementioned methods fail then: 
 
 * Download the FASTA sequence of the trascript of the variant from [NCBI database](http://www.ncbi.nlm.nih.gov/nuccore).
-* If the position of the variant is in coding (c.) coordinates then convert to genomic (g.) coordinates. To do that, we use the [Coordinate mapper](https://github.com/lennax/biopython) addition of biopython.
+* If the position of the variant is in coding (c.) coordinates then convert to genomic (g.) coordinates. To do that, we use the [Coordinate mapper](https://github.com/lennax/biopython/tree/f_loc5/Bio/SeqUtils/Mapper) addition of biopython.
 * Perform a [blat search](https://genome.ucsc.edu/cgi-bin/hgBlat?command=start) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
 
 ## Installation 
