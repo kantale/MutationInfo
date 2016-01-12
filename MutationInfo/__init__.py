@@ -336,6 +336,7 @@ class MutationInfo(object):
 			if not ret:
 				logging.warning('Variant: %s . UCSC Failed. Trying Variant Effect Predictor (VEP)' % (variant))
 				return self._search_VEP(variant)
+			return ret
 
 		#Is this an hgvs variant?
 		hgvs = MutationInfo.biocommons_parse(variant)
