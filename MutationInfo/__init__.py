@@ -819,11 +819,19 @@ class MutationInfo(object):
 		This code is adapted from: https://gist.github.com/lennax/10600113  
 		'''
 
-		def get_first_CDS(parser):
+		def get_parser():
+			return SeqIO.parse(filename, "genbank")
+
+		def get_first_CDS(feat_type='CDS', max_feat_location_parts=1):
+
+			parser = get_parser()
+
 			for rec in parser:
 				for feat in rec.features:
-					if feat.type == "CDS" and len(feat.location.parts) > 1:
+					if feat.type == feat_type and len(feat.location.parts) > max_feat_location_parts:
 						return feat
+
+			return None # This is by default but it looks nicer..
 
 		def make_ret_function(cm):
 
@@ -831,7 +839,7 @@ class MutationInfo(object):
 				try:
 					# Important: We assume that c_pos is 1-based
 					# Both input and output of the method are 0-based 
-					ret = cm.c2g(c_pos-1)+1
+					ret = int(cm.c2g(c_pos-1))+1
 				except IndexError as e:
 					logging.error('Could not convert from c. to g. Could not find position in exons. Error message: %s' % (str(e)))
 					return None
@@ -840,8 +848,15 @@ class MutationInfo(object):
 
 			return ret_f
 
-		parser = SeqIO.parse(filename, "genbank")
-		exons = get_first_CDS(parser=parser)
+		exons = get_first_CDS()
+
+		if exons is None:
+			logging.warning('Could not find any CDS (exons) information in %s . Looking for mRNA' % (filename))
+			exons = get_first_CDS(feat_type='mRNA', max_feat_location_parts=0)
+		if exons is None:
+			logging.error('Could not find mRNA information in %s . Returning None' % (filename))
+			return None
+
 		cm = CoordinateMapper(exons)
 
 		return make_ret_function(cm=cm)
@@ -914,7 +929,6 @@ class MutationInfo(object):
 		def make_ret_function(CDS):
 			start = CDS[0][0] + 1
 			end = CDS[-1][1]
-
 
 			def ret_f(c_pos):
 
@@ -1751,7 +1765,7 @@ def test():
 	print mi.get_info({})
 	print mi.get_info(['NM_001042351.1:c.1387C>T', 'NM_001042351.1:c.1387C>A'])
 	print mi.get_info('NC_000001.11:g.97593343C>A')
-	print mi.get_info('M61857.1:c.121A>G')
+	print mi.get_info('M61857.1:c.121A>G') # No exons in genbank file
 	print mi.get_info('J02843.1:c.-1295G>C') # Test biopython c2g
 	print mi.get_info('J02843.1:c.7632T>A') # Test biopython c2g, this position is out of exon boundaries
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
