@@ -856,11 +856,16 @@ class MutationInfo(object):
 		exons = get_first_CDS()
 
 		if exons is None:
-			logging.warning('Could not find any CDS (exons) information in %s . Looking for mRNA' % (filename))
+			logging.warning('Could not find any CDS (exons) information in %s . Looking for mRNA..' % (filename))
 			exons = get_first_CDS(feat_type='mRNA', max_feat_location_parts=0)
 		if exons is None:
-			logging.error('Could not find mRNA information in %s . Returning None' % (filename))
+			logging.error('Could not find mRNA information in %s . Trying a 1 size exon..' % (filename))
+			exons = get_first_CDS(max_feat_location_parts=0)
+		if exons is None:
+			logging.error('Could not find a 1 size exon. Returning None')
 			return None
+
+		logging.info('Exons found: %s' % (str(exons)))
 
 		cm = CoordinateMapper(exons)
 
