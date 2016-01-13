@@ -445,11 +445,15 @@ class MutationInfo(object):
 				genbank_gene = None
 			#genbank_c_to_g_mapper = self._get_sequence_features_from_genbank(genbank_filename, gene=genbank_gene)
 			genbank_c_to_g_mapper = self._biopython_c2g_mapper(genbank_filename)
+			if genbank_c_to_g_mapper is None:
+				logging.error('Variant: %s . Could not infer a g. position' % (variant))
+				return None
 
 			new_hgvs_position = genbank_c_to_g_mapper(int(hgvs_position))
 			if new_hgvs_position is None:
 				logging.error('Variant: %s . Could not infer a g. position' % (variant))
 				return None
+
 			new_hgvs_position = int(new_hgvs_position)
 			logging.info('Variant: %s . New hgvs g. position: %i   Old c. position: %i' % (variant, new_hgvs_position, hgvs_position))
 			hgvs_position = new_hgvs_position
@@ -1769,6 +1773,7 @@ def test():
 	print mi.get_info('M61857.1:c.121A>G') # No exons in genbank file
 	print mi.get_info('J02843.1:c.-1295G>C') # Test biopython c2g
 	print mi.get_info('J02843.1:c.7632T>A') # Test biopython c2g, this position is out of exon boundaries
+	print mi.get_info('X17059.1:c.1091insAAA') # No exons and no mRNA
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
 	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
 	print mi.get_info('NM_000367.2:c.-178C>T')
