@@ -44,3 +44,6 @@ python setup.py install
 ```
 Important! Requires 13 GB of disk space.
 
+## Contact 
+[Alexandros Kanterakis](mailto:kantale@ics.forth.gr)
+
