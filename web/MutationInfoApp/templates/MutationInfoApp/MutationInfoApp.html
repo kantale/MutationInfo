@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <title>MutationInfo</title>
 
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.0/jquery.min.js"></script>
+
 <!-- Latest compiled and minified CSS -->
 <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
 
@@ -12,6 +14,66 @@
 
 <!-- Latest compiled and minified JavaScript -->
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+
+
+<script>
+
+    function buildPosHTML(json){
+
+        if (json['success']) {
+            ret = '<dl class="dl-horizontal">\n';
+            ret += '<dt>Reference:</dt>\n';
+            ret += '<dd>' + json['ref'] + '</dd>\n';
+            ret += '<dt>Alternative:</dt>\n';
+            ret += '<dd>' + json['alt'] + '</dd>\n';
+            ret += '<dt>Chromosome:</dt>\n';
+            ret += '<dd>' + json['chrom'] + '</dd>\n';
+            ret += '<dt>Position:</dt>\n';
+            ret += '<dd>' + json['offset'] + '</dd>\n';
+            ret += '<dt>Genome:</dt>\n';
+            ret += '<dd>' + json['genome'] + '</dd>\n';
+            ret += '<dt>Source:</dt>\n';
+            ret += '<dd>' + json['source'] + '</dd>\n';
+            ret += '</dl>\n';
+        }
+        else {
+            ret = '<p class="bg-danger">\n';
+            ret += json['error_msg'] + '\n';
+            ret += '</p>\n';
+        }
+
+        document.getElementById("resultdiv").innerHTML = ret;
+        document.getElementById("logspan").innerHTML = json['log'];
+    }
+
+    function doAjax(variantText) {
+
+        $.post(
+            "",
+            {
+                csrfmiddlewaretoken: "{{ csrf_token }}",
+                variantText: variantText
+            },
+            function(json, textStatus) {
+
+                //console.log(json);
+                //alert(json['result']['alt']);
+                buildPosHTML(json);
+            }
+        );
+
+    }
+
+    function variantbtnPressed() {
+        var variantTextElem = document.getElementById("variant");
+        var variantText = variantTextElem.value;
+        // alert(variantText);
+
+        doAjax(variantText);
+
+    }
+</script> 
+
 </head>
 <body>
 
@@ -20,14 +82,29 @@
         <div class="col-md-8 col-md-offset-2">
             <div class="row">
                 <div class = "col-md-12">
-                    <div class = "input-group">
-                        <input type = "text" class = "form-control">
-                        <span class = "input-group-btn">
-                            <button class = "btn btn-primary" type = "button">Get Genome Position</button>
-                        </span>
-                    </div><!-- /input-group -->
+                    <form>
+                        <div class="form-group">
+                            <div class = "input-group">
+                                <input type = "text" class = "form-control" id="variant">
+                                <span class = "input-group-btn">
+                                    <button class = "btn btn-primary" type = "button" onclick="variantbtnPressed()">Get Genome Position</button>
+                                </span>
+                            </div><!-- /input-group -->
+                        </div>
+                    </form>
                 </div><!-- /.col-lg-6 -->
             </div> <!-- row -->
+            <div class="row">
+                <div class="col-md-12">
+                    <samp>
+                        <span id="logspan">
+                            This is a test
+                        </span>
+                    </samp>
+                </div>
+            </div>
+            <div class="row" id="resultdiv">
+            </div>
         </div>
     </div>
 </div>
