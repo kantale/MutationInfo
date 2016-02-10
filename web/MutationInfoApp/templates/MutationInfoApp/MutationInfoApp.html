@@ -18,10 +18,14 @@
 
 <script>
 
+    function logPressed() {
+        document.getElementById("logspan").innerHTML = '<pre>' + logtext + '</pre>';
+    }
+
     function buildPosHTML(json){
 
         if (json['success']) {
-            ret = '<dl class="dl-horizontal">\n';
+            var ret = '<dl class="dl-horizontal">\n';
             ret += '<dt>Reference:</dt>\n';
             ret += '<dd>' + json['ref'] + '</dd>\n';
             ret += '<dt>Alternative:</dt>\n';
@@ -35,18 +39,29 @@
             ret += '<dt>Source:</dt>\n';
             ret += '<dd>' + json['source'] + '</dd>\n';
             ret += '</dl>\n';
+            //ret += '<div class="row">\n';
+            //ret += '    <div class="col-md-12">\n';
+            ret += ' <p>\n';
+            ret += '        <button type="button" class="btn btn-info" onclick="logPressed()">Show Log</button>\n';
+            ret += ' <p>\n';
+            //ret += '    </div>\n';
+            //ret += '</div>\n';
         }
         else {
-            ret = '<p class="bg-danger">\n';
+            var ret = '<p class="bg-danger">\n';
             ret += json['error_msg'] + '\n';
             ret += '</p>\n';
         }
 
+        logtext = json['log']; // Assign global scope
         document.getElementById("resultdiv").innerHTML = ret;
-        document.getElementById("logspan").innerHTML = json['log'];
+        //document.getElementById("logspan").innerHTML = '<pre>' + json['log'] + '</pre>';
     }
 
     function doAjax(variantText) {
+
+        document.getElementById("resultdiv").innerHTML = '<p class="bg-info">Please Wait...</p>';
+        document.getElementById("logspan").innerHTML = '';
 
         $.post(
             "",
@@ -81,11 +96,26 @@
     <div class="row">
         <div class="col-md-8 col-md-offset-2">
             <div class="row">
-                <div class = "col-md-12">
+                <div class="col-md-12">
+                    <div class="text-center">
+                        <h1>MutationInfo</h1>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+            <div class="row">
+                <div class="col-md-12">
+                    <p class="lead">
+                        Quickly locate the genomic position of a variant in <a href='http://www.hgvs.org/mutnomen/'>HGVS</a> format. 
+                    </p>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
                     <form>
                         <div class="form-group">
                             <div class = "input-group">
-                                <input type = "text" class = "form-control" id="variant">
+                                <input type = "text" class = "form-control" id="variant" placeholder="Variant in HGVS format (rs format also works)">
                                 <span class = "input-group-btn">
                                     <button class = "btn btn-primary" type = "button" onclick="variantbtnPressed()">Get Genome Position</button>
                                 </span>
@@ -96,14 +126,20 @@
             </div> <!-- row -->
             <div class="row">
                 <div class="col-md-12">
-                    <samp>
-                        <span id="logspan">
-                            This is a test
-                        </span>
-                    </samp>
+                    Examples: <span>NM_006446.4:c.1198T>G</span> 
                 </div>
             </div>
-            <div class="row" id="resultdiv">
+            <div class="row">
+                <div class="col-md-12" id="resultdiv">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12">
+                    
+                        <span id="logspan">
+                        </span>
+                    
+                </div>
             </div>
         </div>
     </div>

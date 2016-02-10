@@ -41,7 +41,8 @@ def do_MutationInfo(request):
         logging_handler = logging.StreamHandler(string_buffer)
         logging_handler.setLevel(logging.DEBUG)
         this_uuid = str(uuid.uuid4())
-        formatter = logging.Formatter(this_uuid + ' - %(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        #formatter = logging.Formatter(this_uuid + ' - %(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(this_uuid + '%(levelname)s - %(message)s')
         logging_handler.setFormatter(formatter)
         root_logger.addHandler(logging_handler)
 
@@ -54,12 +55,13 @@ def do_MutationInfo(request):
 
         #Get log messages
         log_messages = string_buffer.getvalue()
+        log_messages = '\n'.join([x.replace(this_uuid, '') for x in log_messages.split('\n') if this_uuid in x])
         root_logger.removeHandler(logging_handler)
 
         if type(mi_ret) is dict:
             mi_ret['log'] = log_messages
             mi_ret['success'] = True
-        elif type(mi_ret) is None:
+        elif mi_ret is None:
             mi_ret = {
                 'log': log_messages,
                 'error_msg': exception_message,
