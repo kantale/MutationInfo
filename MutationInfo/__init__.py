@@ -1458,7 +1458,7 @@ class MutationInfo(object):
 
 	def _build_ret_dict(self, *args):
 		return {
-			'chrom' : args[0],
+			'chrom' : str(args[0]).lower().replace('chr', ''),
 			'offset' : args[1],
 			'ref' : args[2],
 			'alt' : args[3],
