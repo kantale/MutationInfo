@@ -26,28 +26,31 @@
 
         if (json['success']) {
             var ret = '<dl class="dl-horizontal">\n';
-            ret += '<dt>Reference:</dt>\n';
-            ret += '<dd>' + json['ref'] + '</dd>\n';
-            ret += '<dt>Alternative:</dt>\n';
-            ret += '<dd>' + json['alt'] + '</dd>\n';
-            ret += '<dt>Chromosome:</dt>\n';
-            ret += '<dd>' + json['chrom'] + '</dd>\n';
-            ret += '<dt>Position:</dt>\n';
-            ret += '<dd>' + json['offset'] + '</dd>\n';
-            ret += '<dt>Genome:</dt>\n';
-            ret += '<dd>' + json['genome'] + '</dd>\n';
-            ret += '<dt>Source:</dt>\n';
-            ret += '<dd>' + json['source'] + '</dd>\n';
-            ret += '<dt><a href="http://www.ensembl.org/info/docs/tools/vep/index.html">VEP</a> Consequence: </dt>\n';
-            ret += '<dd>' + json['VEP_msc'] + '</dd>\n';
-            ret += '</dl>\n';
+                ret += '<dt>Reference:</dt>\n';
+                ret += '<dd>' + json['ref'] + '</dd>\n';
+                ret += '<dt>Alternative:</dt>\n';
+                ret += '<dd>' + json['alt'] + '</dd>\n';
+                ret += '<dt>Chromosome:</dt>\n';
+                ret += '<dd>' + json['chrom'] + '</dd>\n';
+                ret += '<dt>Position:</dt>\n';
+                ret += '<dd>' + json['offset'] + '</dd>\n';
+                ret += '<dt>Genome:</dt>\n';
+                ret += '<dd>' + json['genome'] + '</dd>\n';
+                ret += '<dt>Source:</dt>\n';
+                ret += '<dd>' + json['source'] + '</dd>\n';
+                ret += '<dt><a href="http://www.ensembl.org/info/docs/tools/vep/index.html">VEP</a> Consequence: </dt>\n';
+                ret += '<dd>' + json['VEP_msc'] + '</dd>\n';
+                ret += '</dl>\n';
             //ret += '<div class="row">\n';
             //ret += '    <div class="col-md-12">\n';
             ret += ' <p>\n';
-            ret += '        <button type="button" class="btn btn-info" onclick="logPressed()">Show Log</button>\n';
-            ret += ' <p>\n';
-            //ret += '    </div>\n';
+            var logbuttonhtml = '<button type="button" class="btn btn-info" onclick="logPressed()">Show Log</button>\n';
+            //ret += ' <p>\n';
+            //ret += ' </div>\n';
             //ret += '</div>\n';
+
+            document.getElementById("logbuttondiv").innerHTML = logbuttonhtml;
+
         }
         else {
             var ret = '<p class="bg-danger">\n';
@@ -107,7 +110,6 @@
                 </div>
             </div>
             <div class="row">
-            <div class="row">
                 <div class="col-md-12">
                     <p class="lead">
                         Quickly locate the genomic position of a variant in <a href='http://www.hgvs.org/mutnomen/'>HGVS</a> format. 
@@ -134,7 +136,17 @@
                 </div>
             </div>
             <div class="row">
-                <div class="col-md-12" id="resultdiv">
+                <div class="col-md-12">
+                    <div class="jumbotron">
+                        <div class="row">
+                            <div class="col-md-8 col-md-offset-3" id="resultdiv">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-12" id="logbuttondiv">
                 </div>
             </div>
             <div class="row">
