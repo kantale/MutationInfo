@@ -71,7 +71,7 @@ def do_MutationInfo(request):
                     if type(VEP_ret[0]) is dict:
                         if u'most_severe_consequence' in VEP_ret[0]:
                             VEP_msc = VEP_ret[0][u'most_severe_consequence']
-            elif VEP_ret is dict:
+            elif type(VEP_ret) is dict:
                 if u'error' in VEP_ret:
                     VEP_msc = VEP_ret[u'error']
             #END OF VEP
