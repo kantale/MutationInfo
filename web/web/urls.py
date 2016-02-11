@@ -8,5 +8,5 @@ urlpatterns = patterns('',
 
     url(r'^admin/', include(admin.site.urls)),
 
-    url(r'', include('MutationInfoApp.urls', namespace='MutationInfoApp')),
+    url(r'^MutationInfo/', include('MutationInfoApp.urls', namespace='MutationInfoApp')),
 )
