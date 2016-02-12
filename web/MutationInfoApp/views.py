@@ -64,7 +64,7 @@ def do_MutationInfo(request):
             # MutationInfo seems to run fine.
             # Try VEP
             VEP_variant = '%s:g.%s%s>%s' % tuple(map(str, (mi_ret['chrom'], mi_ret['offset'], mi_ret['ref'], mi_ret['alt'], )))
-            print 'VEP_variant:', VEP_variant
+            #print 'VEP_variant:', VEP_variant
             VEP_ret = VEP(VEP_variant, mi_ret['genome'])
             VEP_msc = 'Could not run Variant Effect Predictor'
             if type(VEP_ret) is list:
@@ -88,9 +88,9 @@ def do_MutationInfo(request):
 
         if type(mi_ret) is dict:
             mi_ret['VEP_msc'] = VEP_msc
-            print VEP_transcript_consequences
+            #print VEP_transcript_consequences
             mi_ret['VEP_transcript_consequences'] = json.dumps(VEP_transcript_consequences, indent=4)
-            print mi_ret['VEP_transcript_consequences']
+            #print mi_ret['VEP_transcript_consequences']
             mi_ret['log'] = log_messages
             mi_ret['success'] = True
 
