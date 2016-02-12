@@ -41,13 +41,17 @@
                 ret += '<dt><a href="http://www.ensembl.org/info/docs/tools/vep/index.html">VEP</a> Consequence: </dt>\n';
                 ret += '<dd>' + json['VEP_msc'] + '</dd>\n';
                 ret += '</dl>\n';
-            //ret += '<div class="row">\n';
-            //ret += '    <div class="col-md-12">\n';
-            ret += ' <p>\n';
-            var logbuttonhtml = '<button type="button" class="btn btn-info" onclick="logPressed()">Show Log</button>\n';
-            //ret += ' <p>\n';
-            //ret += ' </div>\n';
-            //ret += '</div>\n';
+
+                //ret += '<div class="row">\n';
+                //ret += '    <div class="col-md-12">\n';
+                ret += '<strong>VEP transcript consequences:</strong> <p>\n';
+                ret += '<pre>\n';
+                ret += json['VEP_transcript_consequences'] + '\n';
+                ret += '</pre>\n';
+                var logbuttonhtml = '<button type="button" class="btn btn-info" onclick="logPressed()">Show Log</button>\n';
+                //ret += ' <p>\n';
+                //ret += ' </div>\n';
+                //ret += '</div>\n';
 
             document.getElementById("logbuttondiv").innerHTML = logbuttonhtml;
 

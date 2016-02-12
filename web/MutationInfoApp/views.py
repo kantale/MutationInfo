@@ -59,18 +59,22 @@ def do_MutationInfo(request):
             exception_message = 'MutationInfo failed: ' + str(e)
 
         # Run VEP
+        VEP_transcript_consequences = 'Transcript consequences not found'
         if type(mi_ret) is dict:
             # MutationInfo seems to run fine.
             # Try VEP
             VEP_variant = '%s:g.%s%s>%s' % tuple(map(str, (mi_ret['chrom'], mi_ret['offset'], mi_ret['ref'], mi_ret['alt'], )))
             print 'VEP_variant:', VEP_variant
-            VEP_ret = VEP(VEP_variant)
+            VEP_ret = VEP(VEP_variant, mi_ret['genome'])
             VEP_msc = 'Could not run Variant Effect Predictor'
             if type(VEP_ret) is list:
                 if len(VEP_ret) > 0:
                     if type(VEP_ret[0]) is dict:
                         if u'most_severe_consequence' in VEP_ret[0]:
                             VEP_msc = VEP_ret[0][u'most_severe_consequence']
+                        if u'transcript_consequences' in VEP_ret[0]:
+                            print VEP_ret[0]
+                            VEP_transcript_consequences = [x for x in VEP_ret[0][u'transcript_consequences'] if (u'polyphen_score' in x) or (u'sift_score' in x)]
             elif type(VEP_ret) is dict:
                 if u'error' in VEP_ret:
                     VEP_msc = VEP_ret[u'error']
@@ -84,6 +88,9 @@ def do_MutationInfo(request):
 
         if type(mi_ret) is dict:
             mi_ret['VEP_msc'] = VEP_msc
+            print VEP_transcript_consequences
+            mi_ret['VEP_transcript_consequences'] = json.dumps(VEP_transcript_consequences, indent=4)
+            print mi_ret['VEP_transcript_consequences']
             mi_ret['log'] = log_messages
             mi_ret['success'] = True
 
