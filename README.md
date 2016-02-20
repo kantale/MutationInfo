@@ -42,6 +42,13 @@ To install MutationInfo, download the package and run:
 ```bash
 python setup.py install
 ```
+
+Then the first time you instantiate the MutationInfo class, it installs all required datasets:
+```python
+from MutationInfo import MutationInfo
+mi = MutationInfo()
+```
+
 Important! Requires 13 GB of disk space.
 
 ## Contact 
