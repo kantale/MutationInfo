@@ -332,6 +332,7 @@ class MutationInfo(object):
 		if match:
 			# This is an rs variant 
 			logging.info('Variant %s is an rs variant. Looking at dbSNP..' % (variant))
+			#return self._search_VEP(variant) ### This is to enforce VEP 
 			ret = self._get_info_rs(variant)
 			if not ret:
 				logging.warning('Variant: %s . UCSC Failed. Trying Variant Effect Predictor (VEP)' % (variant))
@@ -1405,7 +1406,9 @@ class MutationInfo(object):
 		Variant Effect Predictor
 		'''
 
-		v = VEP(variant, assembly='grch38')
+		vep_assembly = 'grch38'
+
+		v = VEP(variant, assembly=vep_assembly)
 		if not type(v) is list:
 			logging.error('Variant: %s . VEP did not return a list: %s' % (variant, str(v)))
 			return None
@@ -1436,14 +1439,17 @@ class MutationInfo(object):
 		if len(variant_alleles) == 0:
 			logging.warning('Variant: %s . No variant alleles found' % (variant))
 
-		reference = [x for x in allele_string_s if x not in variant_alleles]
+		reference = [x for x in allele_string_s if x not in variant_alleles + [u'-']]
 		if len(reference) == 1:
 			reference = reference[0]
 		elif len(reference) == 0:
-			reference = ''
+			reference = u''
 
 		if len(variant_alleles) == 1:
 			variant_alleles = variant_alleles[0]
+		elif len(variant_alleles) == 0:
+			variant_alleles = u''
+
 
 		arguments = [
 			v[0]['seq_region_name'], # chrom
@@ -1789,6 +1795,10 @@ def test():
 	print mi.get_info('rs4646438') # insertion variation 
 	print mi.get_info('rs305974') # This SNP is not in UCSC 
 	print mi.get_info('rs773790593') # Both UCSC and VEP fail
+
+	info = mi.get_info('rs758320086') # Deletion detected by VEP
+	print info
+	assert info == {'chrom': '22', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42128249, 'alt': u'', 'ref': u'AGTT'}
 
 	print '=' * 20
 	print 'TESTS FINISHED'
