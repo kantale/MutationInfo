@@ -1405,7 +1405,7 @@ class MutationInfo(object):
 		Variant Effect Predictor
 		'''
 
-		v = VEP(variant)
+		v = VEP(variant, assembly='grch38')
 		if not type(v) is list:
 			logging.error('Variant: %s . VEP did not return a list: %s' % (variant, str(v)))
 			return None

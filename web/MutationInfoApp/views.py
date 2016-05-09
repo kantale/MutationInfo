@@ -65,8 +65,13 @@ def do_MutationInfo(request):
             # Try VEP
             VEP_variant = '%s:g.%s%s>%s' % tuple(map(str, (mi_ret['chrom'], mi_ret['offset'], mi_ret['ref'], mi_ret['alt'], )))
             #print 'VEP_variant:', VEP_variant
-            VEP_ret = VEP(VEP_variant, mi_ret['genome'])
-            VEP_msc = 'Could not run Variant Effect Predictor'
+            try:
+                VEP_ret = VEP(VEP_variant, mi_ret['genome'])
+                VEP_msc = 'Could not run Variant Effect Predictor'
+            except Exception as e:
+                VEP_msc = 'Exception while Running VEP: %s' % (str(e))
+                VEP_ret = None
+
             if type(VEP_ret) is list:
                 if len(VEP_ret) > 0:
                     if type(VEP_ret[0]) is dict:
