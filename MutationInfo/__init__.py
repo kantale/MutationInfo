@@ -570,6 +570,14 @@ class MutationInfo(object):
 
 		return ''.join([inverter[x] for x in nucleotide.upper()])
 
+	@staticmethod
+	def reverse_inverse(nucleotide):
+
+		if nucleotide is None:
+			return None
+
+		return MutationInfo.inverse(nucleotide)[::-1]
+
 	def _create_blat_filename(self, transcript, chunk_start, chunk_end):
 		return os.path.join(self.blat_directory, 
 			transcript + '_' + str(chunk_start) + '_' + str(chunk_end) + '.blat.results.html')
@@ -1380,15 +1388,21 @@ class MutationInfo(object):
 			refUCSC = result.refUCSC
 
 			reference = refNCBI
+
 			if refNCBI != refUCSC:
 				logging.warning('Variant: %s has different reference in NCBI (%s) and UCSC (%s)' % (variant, refNCBI, refUCSC))
 				logging.warning('Keeping NCBI reference')
 			
 			observed = result.observed
+
 			observed_s = observed.split('/')
+			
 			if result.strand == u'-':
-				observed_s = list([MutationInfo.inverse(x) if not x in ['-'] else '-' for x in ''.join(observed_s)]) # Do not invert '-'
+				#observed_s = list([MutationInfo.inverse(x) if not x in ['-'] else '-' for x in ''.join(observed_s)]) # Do not invert '-'
+				observed_s = [MutationInfo.reverse_inverse(x) if not x in ['-'] else '' for x in observed_s] # Do not invert '-'
+
 			alternative = [x for x in observed_s if x != reference]
+
 			logging.info('Variant: %s . observed: %s alternate: %s' % (variant, observed, str(alternative)))
 			if len(alternative) == 1:
 				alternative = alternative[0]
@@ -1797,8 +1811,10 @@ def test():
 	print mi.get_info('rs773790593') # Both UCSC and VEP fail
 
 	info = mi.get_info('rs758320086') # Deletion detected by VEP
-	print info
 	assert info == {'chrom': '22', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42128249, 'alt': u'', 'ref': u'AGTT'}
+
+	info = mi.get_info('rs1799752') # Deletion from UCSC
+	assert info == {'chrom': '10', 'source': 'UCSC', 'genome': 'hg19', 'offset': 96796976L, 'alt': '', 'ref': 'CAA'} 
 
 	print '=' * 20
 	print 'TESTS FINISHED'
