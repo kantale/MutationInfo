@@ -1400,6 +1400,11 @@ class MutationInfo(object):
 			if result.strand == u'-':
 				#observed_s = list([MutationInfo.inverse(x) if not x in ['-'] else '-' for x in ''.join(observed_s)]) # Do not invert '-'
 				observed_s = [MutationInfo.reverse_inverse(x) if not x in ['-'] else '' for x in observed_s] # Do not invert '-'
+			else:
+				observed_s = [x if not x in ['-'] else '' for x in observed_s]
+
+			if reference == '-':
+				reference = ''
 
 			alternative = [x for x in observed_s if x != reference]
 
@@ -1815,6 +1820,9 @@ def test():
 
 	info = mi.get_info('rs1799752') # Deletion from UCSC
 	assert info == {'chrom': '10', 'source': 'UCSC', 'genome': 'hg19', 'offset': 96796976L, 'alt': '', 'ref': 'CAA'} 
+
+	info = mi.get_info('rs72466463') # Insertion from UCSC 
+	assert info == {'chrom': '2', 'source': 'UCSC', 'genome': 'hg19', 'offset': 38298287L, 'alt': 'GGTGGCATGA', 'ref': ''} 
 
 	print '=' * 20
 	print 'TESTS FINISHED'
