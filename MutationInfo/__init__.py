@@ -337,6 +337,9 @@ class MutationInfo(object):
 			if not ret:
 				logging.warning('Variant: %s . UCSC Failed. Trying Variant Effect Predictor (VEP)' % (variant))
 				return self._search_VEP(variant)
+			elif ret['alt'] == 'lengthTooLong':
+				logging.warning('Variant: %s . UCSC Returned "lengthTooLong". Trying Variant Effect Predictor (VEP)' % (variant))
+				return self._search_VEP(variant)
 			return ret
 
 		#Is this an hgvs variant?
@@ -1485,8 +1488,8 @@ class MutationInfo(object):
 		return {
 			'chrom' : str(args[0]).lower().replace('chr', ''),
 			'offset' : args[1],
-			'ref' : args[2],
-			'alt' : args[3],
+			'ref' : args[2] if not args[2] is None else '',
+			'alt' : args[3] if not args[3] is None else '',
 			'genome' : args[4],
 			'source' : args[5],
 		}
@@ -1823,6 +1826,18 @@ def test():
 
 	info = mi.get_info('rs72466463') # Insertion from UCSC 
 	assert info == {'chrom': '2', 'source': 'UCSC', 'genome': 'hg19', 'offset': 38298287L, 'alt': 'GGTGGCATGA', 'ref': ''} 
+
+	info = mi_get_info('rs8175347') # UCSC short tandem repeat (microsatellite) variation 
+	assert info == {'chrom': '2', 'source': 'UCSC', 'genome': 'hg19', 'offset': 234668882L, 'alt': ['(TA)5', '6', '7', '8'], 'ref': 'TA'} 
+
+	info = mi_get_info('rs28399445') # UCSC Substitution
+	assert info == {'chrom': '19', 'source': 'UCSC', 'genome': 'hg19', 'offset': 41354170L, 'alt': 'T', 'ref': 'GC'} #  Check https://mutalyzer.nl/name-checker?description=NM_000762.5%3Ac.608_609delGCinsA 
+
+	info = mi_get_info('rs267607275') # UCSC Multiple alleles 
+	assert info == {'chrom': '6', 'source': 'UCSC', 'genome': 'hg19', 'offset': 18149357L, 'alt': ['T', 'G'], 'ref': 'A'}
+
+	info = mi_get_info('rs1799752') # UCSC Returned lengthTooLong 
+	assert info == {'chrom': '17', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 63488530, 'alt': [u'ATACAGTCACTTTTTTTTTTTTTTTGAGACGGAGTCTCGCTCTGTCGCCC', u'G'], 'ref': u''}  
 
 	print '=' * 20
 	print 'TESTS FINISHED'
