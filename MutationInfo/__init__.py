@@ -361,6 +361,7 @@ class MutationInfo(object):
 			new_variant = self._search_mutalyzer(variant, **kwargs)
 			if new_variant is None:
 				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
+				#print self._search_VEP(variant)
 				return None
 			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))
 			return self.get_info(new_variant, **kwargs)
@@ -470,9 +471,11 @@ class MutationInfo(object):
 			logging.error('Variant: %s Sorry.. only c (coding DNA) and g (genomic) variants are supported so far.' % (variant))
 			return None
 
-		logging.info('Variant: %s . Reference on fasta: %s  Reference on variant: %s' % (variant, fasta[hgvs_position-1], hgvs_reference))
-		if fasta[hgvs_position-1] != hgvs_reference:
-			logging.error('Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta[hgvs_position-1], hgvs_reference))
+		fasta_reference = fasta[hgvs_position-1:hgvs_position-1 + len(hgvs_reference)]
+		logging.info('Variant: %s . Reference on fasta: %s  Reference on variant: %s' % (variant, fasta_reference, hgvs_reference))
+
+		if fasta_reference != hgvs_reference:
+			logging.error('Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta_reference, hgvs_reference))
 
 		logging.info('Variant: %s . Fasta length: %i' % (variant, len(fasta)))
 		logging.info('Variant: %s . Variant position: %i' % (variant, hgvs_position))
@@ -1429,6 +1432,7 @@ class MutationInfo(object):
 		'''
 
 		vep_assembly = 'grch38'
+		#vep_assembly = 'grch37'
 
 		v = VEP(variant, assembly=vep_assembly)
 		if not type(v) is list:
@@ -1838,6 +1842,10 @@ def test():
 
 	info = mi_get_info('rs1799752') # UCSC Returned lengthTooLong 
 	assert info == {'chrom': '17', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 63488530, 'alt': [u'ATACAGTCACTTTTTTTTTTTTTTTGAGACGGAGTCTCGCTCTGTCGCCC', u'G'], 'ref': u''}  
+
+	info = mi_get_info('NG_008377.1:g.6502_6507delCTCTCT') # BLAT Deletion 
+	assert info == {'chrom': '19', 'source': 'BLAT', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'} 
+
 
 	print '=' * 20
 	print 'TESTS FINISHED'
