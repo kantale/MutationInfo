@@ -10,10 +10,12 @@ from MutationInfo import MutationInfo
 mi = MutationInfo()
 
 mi.get_info('rs53576')
-{'chrom': '3', 'source': 'UCSC', 'genome': 'hg19', 'offset': 8804371L, 'alt': 'G', 'ref': 'A'}
+{'chrom': '3', 'source': 'UCSC', 'genome': 'hg19', 
+ 'offset': 8804371L, 'alt': 'G', 'ref': 'A'}
 
 mi.get_info('NM_006446.4:c.1198T>G')
-{'chrom': '12', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 21355487, 'alt': 'G', 'ref': 'T'}
+{'chrom': '12', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 
+ 'offset': 21355487, 'alt': 'G', 'ref': 'T'}
 ```
 
 ## How it works 
