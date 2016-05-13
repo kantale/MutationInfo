@@ -262,6 +262,7 @@ class MutationInfo(object):
 		# Case 3
 		# -1126(C>T) 
 		# The variant contains parenthesis in the substitition
+		# NT_005120.15:c.-1126(C>T) --> NT_005120.15:c.-1126C>T
 		search = re.search(r'[\d]+\([ACGT]+>[ACGT]+\)', new_variant)
 		if search:
 			logging.warning('Variant: %s   . Contains parenthesis around substitition. Removing the parenthesis' % (new_variant))
