@@ -39,6 +39,7 @@ from pygr.seqdb import SequenceFileDB
 # I have changed the name from mapper to biopython_mapper 
 # An example of how to use this mapper is here: https://gist.github.com/lennax/10600113 
 from biopython_mapper import CoordinateMapper 
+from biopython_mapper.MapPositions import GenomePositionError as biopython_GenomePositionError 
 
 from cruzdb import Genome as UCSC_genome # To Access UCSC https://pypi.python.org/pypi/cruzdb/ 
 
@@ -111,11 +112,15 @@ class MutationInfo(object):
 
 	mutalyzer_url = 'https://mutalyzer.nl/name-checker?description={variant}'
 
-	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp142'):
+	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp146', **kwargs):
+	#def __init__(self, local_directory=None, email=None, genome='hg38', dbsnp_version='snp146'):
 		'''
 		Current dbSNP version be default is 142 : 
-			http://genome.ucsc.edu/goldenPath/newsarch.html
-			11 February 2015 - dbSNP 142 Available for hg19 and hg38
+			#http://genome.ucsc.edu/goldenPath/newsarch.html
+			#11 February 2015 - dbSNP 142 Available for hg19 and hg38
+
+			15 April 2016 - dbSNP 146 Available for hg19 and hg38
+
 		'''
 
 		#Check genome value
@@ -192,11 +197,20 @@ class MutationInfo(object):
 
 		# Set up cruzdb (UCSC)
 		logging.info('Setting up UCSC access..')
-		self.ucsc = UCSC_genome(self.genome)
+		if 'ucsc_genome' in kwargs:
+			logging.info('Using UCSC GENOME: %s' % (kwargs['ucsc_genome']))
+			self.ucsc = UCSC_genome(kwargs['ucsc_genome'])
+			self.ucsc_assembly = kwargs['ucsc_genome']
+		else:
+			self.ucsc = UCSC_genome(self.genome)
+			self.ucsc_assembly = self.genome
 		self.ucsc_dbsnp = getattr(self.ucsc, self.dbsnp_version)
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
+
+		#Stores what went wrong during a conversion 
+		self.current_fatal_error = []
 
 	@staticmethod
 	def biocommons_parse(variant):
@@ -282,157 +296,234 @@ class MutationInfo(object):
 	def _get_info_rs(self, variant):
 		return self._search_ucsc(variant)
 
-	def _build_ret_dict(self, *args):
-		return {
-			'chrom' : args[0],
-			'offset' : args[1],
-			'ref' : args[2],
-			'alt' : args[3],
-			'genome' : args[4],
-			'source' : args[5],
-		}
+	def get_info_ucsc(self, variant):
+		return self._search_ucsc(variant)
 
-
-	def get_info(self, variant, **kwargs):
-		"""
-		Doing our best to get the most out of a variant name
-
-		:param variant: A variant or list of variants
-
-		"""
-
-		def get_elements_from_hgvs(hgvs):
-			hgvs_transcript = hgvs.ac
-			hgvs_type = hgvs.type
-			hgvs_position = hgvs.posedit.pos.start.base
-			hgvs_reference = hgvs.posedit.edit.ref
-			if hasattr(hgvs.posedit.edit, 'alt'):
-				hgvs_alternative = hgvs.posedit.edit.alt
-			else:
-				hgvs_alternative = None
-
-			return hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
-
-		#Check the type of variant
-		if type(variant) is list:
-			ret = [self.get_info(v) for v in variant]
-			return ret
-		elif type(variant) is unicode:
-			logging.info('Converting variant: %s from unicode to str and rerunning..' % (variant))
-			ret = self.get_info(str(variant.strip()), **kwargs)
-			return ret
-		elif type(variant) is str:
-			#This is expected
-			pass
+	def get_info_vep(self, variant, **kwargs):
+		if 'vep_assembly' in kwargs:
+			vep_ret = self._search_VEP(variant, vep_assembly=kwargs['vep_assembly'])
 		else:
-			logging.error('Unknown type of variant parameter: %s  (Accepted str and list)' % (type(variant).__name__))
-			return None
+			vep_ret = self._search_VEP(variant)
+		if vep_ret is None:
+			return {'notes': ' / '.join(self.current_fatal_error)}
+		else:
+			return vep_ret
 
-		#Is this an rs variant?
-		match = re.match(r'rs[\d]+', variant)
-		if match:
-			# This is an rs variant 
-			logging.info('Variant %s is an rs variant. Looking at dbSNP..' % (variant))
-			#return self._search_VEP(variant) ### This is to enforce VEP 
-			ret = self._get_info_rs(variant)
-			if not ret:
-				logging.warning('Variant: %s . UCSC Failed. Trying Variant Effect Predictor (VEP)' % (variant))
-				return self._search_VEP(variant)
-			elif ret['alt'] == 'lengthTooLong':
-				logging.warning('Variant: %s . UCSC Returned "lengthTooLong". Trying Variant Effect Predictor (VEP)' % (variant))
-				return self._search_VEP(variant)
-			return ret
+	def get_info_myvariantinfo(self, variant):
+		url_pattern = 'http://myvariant.info/v1/query?q={variant}'
+		#url_pattern = 'http://myvariant.info/v1/query?q={variant}&hg38=true' # As of now (1 June 2016) it does not work. Returns hg19 
+		url = url_pattern.format(variant=variant)
 
-		#Is this an hgvs variant?
+		logging.info('TRYING MyVariant INFO for: %s' % (variant))
+		logging.debug('MyVariantInfo URL: %s' % (url)  )
+
+		r = requests.get(url)
+		t = r.text
+		logging.debug('Variant: %s . Recieved from MyVariant.info:')
+		logging.debug(t)
+		result = json.loads(t)
+
+		if 'hits' in result:
+			if len(result['hits']) > 0:
+				if '_id' in result['hits'][0]:
+					_id = result['hits'][0]['_id']
+					logging.debug('MYVARIANT INFO for variant %s returned: %s' % (variant, _id))
+					hgvs = MutationInfo.biocommons_parse(_id)
+					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
+					ret = self._build_ret_dict(hgvs_transcript, hgvs_position, hgvs_reference, hgvs_alternative, 'hg19', 'MyVariantInfo') # http://myvariant.info/faq/ By default, MyVariant.info supports hg19-based HGVS ids as the "_id" field for each variant object. 
+					return ret
+				else:
+					return {'notes': 'No _id entry in hits'}
+			else:
+				return {'notes': 'Returned empty hits'}
+		else:
+			return {'notes': 'No hits'}
+
+
+	def get_info_biocommons(self, variant):
 		hgvs = MutationInfo.biocommons_parse(variant)
 		if hgvs is None:
-			logging.warning('Variant: %s . Biocommons parsing failed. Trying to fix possible problems..' % (str(variant)))
-			new_variant = MutationInfo.fuzzy_hgvs_corrector(variant, **kwargs)
-			if type(new_variant) is list:
-				return [self.get_info(v) for v in new_variant]
-			elif type(new_variant) is str:
-				hgvs = MutationInfo.biocommons_parse(new_variant)
-				variant = new_variant
+			print 'COULD NOT PARSE VARIANT WITH BIOCOMMONS'
+			return {}
 
-		if hgvs is None:
-			#Parsing failed again.. 
-			logging.warning('Biocommons failed to parse variant: %s .' % (variant))
+		ret = {}
 
-			logging.info('Variant: %s . Trying to reparse with Mutalyzer and get the genomic description' % (variant))
-			new_variant = self._search_mutalyzer(variant, **kwargs)
-			if new_variant is None:
-				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
-				#print self._search_VEP(variant)
-				return None
-			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))
-			return self.get_info(new_variant, **kwargs)
+		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
 
-		#Up to here we have managed to parse the variant
-		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs)
+		if hgvs_type == 'g':
+			#Get all transcripts
+			t_splign = self.biocommons_vm_splign.relevant_transcripts(hgvs)
+			t_blat = self.biocommons_vm_blat.relevant_transcripts(hgvs)
+			t_genewise = self.biocommons_vm_genewise.relevant_transcripts(hgvs)
+
+			if t_splign + t_blat + t_genewise == []:
+				print 'Could not find relevant_transcripts'
+				return {}
+			else:
+
+				if len(t_splign):
+					var_c = self.biocommons_vm_splign.g_to_c(hgvs, t_splign[0])
+				elif len(t_blat):
+					var_c = self.biocommons_vm_blat.g_to_c(hgvs, t_blat[0])
+				elif len(t_genewise):
+					var_c = self.biocommons_vm_genewise.g_to_c(hgvs, t_blat)
+
+				var_c_str = str(var_c)
+				print 'BIOCOMMONS CONVERTED FROM G to C:', var_c_str
+				return self.get_info_biocommons(var_c_str)
 
 
-		#Try to map the variant in the reference assembly with biocommons
-		if hgvs_type == 'c':
-			logging.info('Variant: %s . Trying to map variant in the reference assembly with biocommons' % (variant))
-			success = False
+		if hgvs_type != 'c':
+			print 'INVESTIGATE MORE... 5681'
+			a=1/0
 
-			for biocommons_vm_name, biocommons_vm_method in [
-					('splign', self.biocommons_vm_splign), 
-					('blat', self.biocommons_vm_blat), 
-					('genewise', self.biocommons_vm_genewise),
-				]:
 
-				try:
-					logging.info('Trying biocommon method: %s' % (biocommons_vm_name))
-					hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
-					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = get_elements_from_hgvs(hgvs_reference_assembly)
-					success = True
-				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . %s method failed: %s' % (variant, biocommons_vm_name, str(e)))
-				except hgvs_biocommons.exceptions.HGVSError as e:
-					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
+		for method_name, method in [('bc_splign', self.biocommons_vm_splign), ('bc_blat', self.biocommons_vm_blat), ('bc_genewise', self.biocommons_vm_genewise)]:
+			print 'Trying BIOCOMMONS METHOD:', method_name
+			
+			hgvs_notes = ''
+			try:
+				hgvs_reference_assembly = method.c_to_g(hgvs)
+				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs_reference_assembly)
+				print 'BIOCOMMONS METHOD: %s SUCCEEDED: ' % method_name, hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
+				print 'FETCHING TRANSCRIPT %s FROM ENTREZ' % (hgvs_transcript) 
+				ncbi_info = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
+				search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
+				if search is None:
+					print 'INVESTIGATE MORE.... 9834'
+					a=1/0
+				entrez_chromosome = search.group(1)
+				entrez_genome = search.group(2)
+			except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+				print 'BIOCOMMONS METHOD: %s FAILED' % method_name
+				print 'REASON:', str(e)
+				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = ['UNKNOWN'] * 5
+				entrez_chromosome, entrez_genome = ['UNKNOWN'] * 2
+				hgvs_notes = str(e)
+			except hgvs_biocommons.exceptions.HGVSError as e:
+				print 'BIOCOMMONS METHOD: %s FAILED' % method_name
+				print 'REASON:', str(e)
+				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = ['UNKNOWN'] * 5
+				entrez_chromosome, entrez_genome = ['UNKNOWN'] * 2
+				hgvs_notes = str(e)
 
-				if success:
-					break
 
-		#Is this a reference assembly?
-		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
-			logging.info('Variant: %s . is a Complete genomic molecule, reference assembly' % (variant))
-			#ncbi_info = self._get_info_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
-			ncbi_info = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
-			search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
-			if search is None:
-				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
-				return None
-			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'NC_transcript')
-			return ret
+			ret['%s_hgvs_transcript' % method_name] = hgvs_transcript
+			ret['%s_hgvs_type' % method_name] = hgvs_type
+			ret['%s_hgvs_position' % method_name] = hgvs_position
+			ret['%s_hgvs_reference' % method_name] = hgvs_reference
+			ret['%s_hgvs_alternative' % method_name] = hgvs_alternative
+			ret['%s_entrez_chromosome' % method_name] = entrez_chromosome
+			ret['%s_entrez_genome' % method_name] = entrez_genome
+			ret['%s_hgvs_notes' % method_name] = hgvs_notes
 
-		logging.info('Biocommons Failed')
+		return ret
 
-		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
+	def get_info_counsyl(self, variant):
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-			return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
 		except KeyError as e:
-			logging.warning('Variant: %s . pyhgvs KeyError: %s' % (variant, str(e)))
+			print 'COUNSYL REPORTED: %s' % (str(e))
+			return {}
 		except ValueError as e:
-			logging.warning('Variant: %s . pyhgvs ValueError: %s' % (variant, str(e)))
-		except IndexError as e:
-			logging.warning('Variant: %s . pyhgvs IndexError: %s' % (variant, str(e)))
+			print 'COUNSYL REPORTED: %s' % (str(e))
+			return {}
+		except hgvs_counsyl.InvalidHGVSName as e:
+			print 'COULD NOT PARSE VARIANT WITH COUNSYL: %s' % (str(e))
+			return {}
+		return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
 
-		logging.info('counsyl pyhgvs failed...')
+	def get_info_mutalyzer(self, variant):
+		#print self._search_mutalyzer(variant)
+		new_variant = self.search_mutalyzer_position_converter(variant)
+		if new_variant is None:
+			print 'MUTALYZER POSITION CONVERTER FAILED'
+			print 'TRYING MAIN MUTALYZER..'
+			new_variant_mutalyzer = self._search_mutalyzer(variant)
+			print 'MAIN MUTALYZER REPORTED NEW VARIANT:', new_variant_mutalyzer
+			if new_variant_mutalyzer is None:
+				print 'MAIN MUTALYZER FAILED'
+				return {'notes': ' / '.join(self.current_fatal_error)}
+			print 'RUNNING BLAT..'
+			new_variant_snp_info = self.get_info_BLAT(new_variant_mutalyzer)
+			ret =self._build_ret_dict(
+				new_variant_snp_info['chrom'],
+				new_variant_snp_info['offset'],
+				new_variant_snp_info['ref'],
+				new_variant_snp_info['alt'],
+				new_variant_snp_info['genome'],
+				'Mutalyzer',
+				new_variant_snp_info['notes'] + ' / Mutalyzer did c_g conversion, INFO BY BLAT',
+				)
+			return ret
 
-		logging.info('Trying LOVD..')
-		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
+#			print 'INVESTIGATE MORE.. 4912'
+#			a=1/0
+
+		new_variant = str(new_variant)
+
+		#Using BioCommons to Parse the new variant
+		hgvs = MutationInfo.biocommons_parse(new_variant)
+		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
+		#print hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
+		print 'SEARCHING NCBI FOR TRANSCRIPT %s GENERATED FROM MUTALYZER' % (hgvs_transcript)
+		ncbi_info = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
+		search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
+		if search is None:
+			print 'INVESTIGATE MORE.. 5910'
+			a=1/0
+
+		ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'Mutalyzer')
+		return ret
+
+	def get_info_LOVD(self, variant):
+		#Parse with biocommons
+		hgvs = MutationInfo.biocommons_parse(variant)
+		if hgvs is None:
+			print 'LOVD USES BIOCOMMONS TO PARSE VARIANT and BIOCOMMONS FAILED'
+			return None
+
+		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
+		try:
+			lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
+		except urllib2.HTTPError as e:
+			print 'urllib2.HTTPError exception:', str(e)
+			return None
 		if not lovd_chrom is None:
 			logging.warning('***SERIOUS*** strand of variant has not been checked!')
 			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD')
 
-		logging.info('LOVD failed..')
+		print 'LOVD ???? 4498'
+		return None
+
+	def get_info_BLAT(self, variant=None, hgvs_transcript=None, hgvs_type=None, hgvs_position=None, hgvs_reference=None, hgvs_alternative=None, **kwargs):
+		#Parse with biocommons
+
+		notes = ''
+
+		if hgvs_transcript is None:
+			print 'PARSING VARIANT WITH BIOCOMMONS'
+			hgvs = MutationInfo.biocommons_parse(variant)
+			if not hgvs is None:
+				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
+				print 'BIOCOMMONS REPORTED:', hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
+			else:
+				print 'BIOCOMMONS FAILED TO PARSE VARIANT.. Applying our own simple parser.. Experimental'
+				hgvs_transcript = variant.split(':')[0]
+				print 'Using hgvs_transcript:', hgvs_transcript
+				s = re.search(r'[\w\.]+\:([cg]).', variant)
+				if not s:
+					print 'OUR OWN PARSER FAILED..'
+					return None
+				hgvs_type = s.group(1)
+				print 'Using hgvs_type:', hgvs_type
 
 		logging.info('Fetching fasta sequence for trascript: %s' % (hgvs_transcript))
 		#fasta = self._get_fasta_from_nucleotide_entrez(hgvs_transcript)
 		fasta = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='fasta')
+		if fasta is None:
+			logging.error('BLAT method failed')
+			return None
 
 		# Check variant type
 		if hgvs_type == 'c':
@@ -443,6 +534,10 @@ class MutationInfo(object):
 			#ncbi_xml = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='xml')
 			#genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gb')
 			genbank = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='gbwithparts')
+			if genbank is None:
+				logging.error('Variant: %s . Could not get data from Entrez' % (variant))
+				return None
+
 			genbank_filename = self._ncbi_filename(hgvs_transcript, 'gbwithparts')
 			logging.info('Variant: %s . Genbank filename: %s' % (variant, genbank_filename))
 			if 'gene' in kwargs:
@@ -457,8 +552,9 @@ class MutationInfo(object):
 
 			new_hgvs_position = genbank_c_to_g_mapper(int(hgvs_position))
 			if new_hgvs_position is None:
-				logging.error('Variant: %s . Could not infer a g. position' % (variant))
-				return None
+				self.current_fatal_error += ['Variant: %s . Could not infer a g. position' % (variant)]  
+				logging.error(self.current_fatal_error[-1])
+				return {'notes': ' / '.join(self.current_fatal_error)}
 
 			new_hgvs_position = int(new_hgvs_position)
 			logging.info('Variant: %s . New hgvs g. position: %i   Old c. position: %i' % (variant, new_hgvs_position, hgvs_position))
@@ -472,11 +568,15 @@ class MutationInfo(object):
 			logging.error('Variant: %s Sorry.. only c (coding DNA) and g (genomic) variants are supported so far.' % (variant))
 			return None
 
-		fasta_reference = fasta[hgvs_position-1:hgvs_position-1 + len(hgvs_reference)]
+		fasta_reference = fasta[hgvs_position-1:hgvs_position-1 + (0 if hgvs_reference is None else len(hgvs_reference))  ]
 		logging.info('Variant: %s . Reference on fasta: %s  Reference on variant: %s' % (variant, fasta_reference, hgvs_reference))
 
 		if fasta_reference != hgvs_reference:
-			logging.error('Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta_reference, hgvs_reference))
+			if fasta_reference == '' and hgvs_reference is None:
+				pass
+			else:
+				notes = 'Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta_reference, hgvs_reference)
+				logging.error(notes)
 
 		logging.info('Variant: %s . Fasta length: %i' % (variant, len(fasta)))
 		logging.info('Variant: %s . Variant position: %i' % (variant, hgvs_position))
@@ -511,7 +611,7 @@ class MutationInfo(object):
 			logging.info('Variant: %s . Blat filename does not exist. Requesting it from UCSC..' % (variant) )
 			self._perform_blat(fasta_chunk, blat_filename)
 
-		logging.info('Variant: %s . Blat filename exists (or created). Parsing it..' % (variant))
+		logging.info('Variant: %s . Blat results filename exists (or created). Parsing it..' % (variant))
 		blat = self._parse_blat_results_filename(blat_filename)
 
 		#Log some details regarding the blat results
@@ -560,8 +660,190 @@ class MutationInfo(object):
 			hgvs_reference = self.inverse(hgvs_reference)
 			hgvs_alternative = self.inverse(hgvs_alternative)
 
-		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome, 'BLAT')
+		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome, 'BLAT', notes)
 		return ret
+
+	def get_elements_from_hgvs(self, hgvs):
+		hgvs_transcript = hgvs.ac
+		hgvs_type = hgvs.type
+		hgvs_position = hgvs.posedit.pos.start.base
+		hgvs_reference = hgvs.posedit.edit.ref
+		if hasattr(hgvs.posedit.edit, 'alt'):
+			hgvs_alternative = hgvs.posedit.edit.alt
+		else:
+			hgvs_alternative = None
+
+		return hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
+
+	def get_info(self, variant, **kwargs):
+		"""
+		Doing our best to get the most out of a variant name
+
+		:param variant: A variant or list of variants
+
+		"""
+
+		self.current_fatal_error = []
+
+		#Check if a preferred info is in parameters:
+		if 'method' in kwargs:
+			if kwargs['method'] == 'UCSC':
+				return self.get_info_ucsc(variant)
+			elif kwargs['method'] == 'VEP':
+				return self.get_info_vep(variant, **kwargs)
+			elif kwargs['method'] == 'MYVARIANTINFO':
+				return self.get_info_myvariantinfo(variant)
+			elif kwargs['method'] == 'BIOCOMMONS':
+				return self.get_info_biocommons(variant)
+			elif kwargs['method'] == 'COUNSYL':
+				return self.get_info_counsyl(variant)
+			elif kwargs['method'] == 'MUTALYZER':
+				return self.get_info_mutalyzer(variant)
+			elif kwargs['method'] == 'LOVD':
+				return self.get_info_LOVD(variant)
+			elif kwargs['method'] == 'BLAT':
+				return self.get_info_BLAT(variant=variant)
+			else:
+				raise MutationInfoException('Unknown method: %s ' % (str(kwargs['method'])))
+
+		#Check the type of variant
+		if type(variant) is list:
+			ret = [self.get_info(v) for v in variant]
+			return ret
+		elif type(variant) is unicode:
+			logging.info('Converting variant: %s from unicode to str and rerunning..' % (variant))
+			ret = self.get_info(str(variant.strip()), **kwargs)
+			return ret
+		elif type(variant) is str:
+			#This is expected
+			pass
+		else:
+			logging.error('Unknown type of variant parameter: %s  (Accepted str and list)' % (type(variant).__name__))
+			return None
+
+		#Is this an rs variant?
+		match = re.match(r'rs[\d]+', variant)
+		if match:
+			# This is an rs variant 
+			logging.info('Variant %s is an rs variant' % (variant))
+
+			# Variant Effect Predictor
+			logging.info('Variant: %s . Trying VEP..' % (variant))
+			ret = self.get_info_vep(variant, **kwargs)
+			if ret:
+				return ret
+			else:
+				logging.warning('Variant: %s . VEP Failed' % (variant))
+
+			# MyVariant.info
+			logging.info('Variant: %s . Trying MyVariant.info' % (variant))
+			ret = self.get_info_myvariantinfo(variant)
+			if ret:
+				return ret
+			else:
+				logging.warning('Variant: %s . MyVariant.info failed' % (variant))
+
+			# CruzDB
+			logging.info('Variant: %s . Trying CruzDB (UCSC)..' % (variant))
+			ret = self._get_info_rs(variant)
+			if not ret:
+				logging.warning('Variant: %s CruzDB (UCSC) failed..')
+				return ret
+			elif ret['alt'] == 'lengthTooLong':
+				logging.warning('Variant: %s . CruzDB (UCSC) Returned "lengthTooLong". Trying Variant Effect Predictor (VEP)' % (variant))
+				return ret
+
+			return ret
+
+		#Is this an hgvs variant?
+		hgvs = MutationInfo.biocommons_parse(variant)
+		if hgvs is None:
+			logging.warning('Variant: %s . Biocommons parsing failed. Trying to fix possible problems..' % (str(variant)))
+			new_variant = MutationInfo.fuzzy_hgvs_corrector(variant, **kwargs)
+			if type(new_variant) is list:
+				return [self.get_info(v) for v in new_variant]
+			elif type(new_variant) is str:
+				hgvs = MutationInfo.biocommons_parse(new_variant)
+				variant = new_variant
+
+		if hgvs is None:
+			#Parsing failed again.. 
+			logging.warning('Biocommons failed to parse variant: %s .' % (variant))
+
+			logging.info('Variant: %s . Trying to reparse with Mutalyzer and get the genomic description' % (variant))
+			new_variant = self._search_mutalyzer(variant, **kwargs)
+			if new_variant is None:
+				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
+				#print self._search_VEP(variant)
+				return None
+			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))
+			return self.get_info(new_variant, **kwargs)
+
+		#Up to here we have managed to parse the variant
+		hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
+
+
+		#Try to map the variant in the reference assembly with biocommons
+		if hgvs_type == 'c':
+			logging.info('Variant: %s . Trying to map variant in the reference assembly with biocommons' % (variant))
+			success = False
+
+			for biocommons_vm_name, biocommons_vm_method in [
+					('splign', self.biocommons_vm_splign), 
+					('blat', self.biocommons_vm_blat), 
+					('genewise', self.biocommons_vm_genewise),
+				]:
+
+				try:
+					logging.info('Trying biocommon method: %s' % (biocommons_vm_name))
+					hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
+					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs_reference_assembly)
+					success = True
+				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+					logging.warning('Variant: %s . %s method failed: %s' % (variant, biocommons_vm_name, str(e)))
+				except hgvs_biocommons.exceptions.HGVSError as e:
+					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
+
+				if success:
+					break
+
+		#Is this a reference assembly?
+		if self._get_ncbi_accession_type(hgvs_transcript) == 'NC':
+			logging.info('Variant: %s . is a Complete genomic molecule, reference assembly' % (variant))
+			#ncbi_info = self._get_info_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
+			ncbi_info = self._get_data_from_nucleotide_entrez(hgvs_transcript, retmode='text', rettype='asn.1')
+			search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
+			if search is None:
+				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
+				return None
+			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'NC_transcript')
+			return ret
+
+		logging.info('Biocommons Failed')
+
+		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
+		try:
+			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
+			return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
+		except KeyError as e:
+			logging.warning('Variant: %s . pyhgvs KeyError: %s' % (variant, str(e)))
+		except ValueError as e:
+			logging.warning('Variant: %s . pyhgvs ValueError: %s' % (variant, str(e)))
+		except IndexError as e:
+			logging.warning('Variant: %s . pyhgvs IndexError: %s' % (variant, str(e)))
+
+		logging.info('counsyl pyhgvs failed...')
+
+		logging.info('Trying LOVD..')
+		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
+		if not lovd_chrom is None:
+			logging.warning('***SERIOUS*** strand of variant has not been checked!')
+			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD')
+
+		logging.info('LOVD failed..')
+
+		return self.get_info_BLAT(self, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
+
 
 	@staticmethod
 	def inverse(nucleotide):
@@ -597,7 +879,12 @@ class MutationInfo(object):
 		'''
 		http://www.ncbi.nlm.nih.gov/books/NBK25499/table/chapter4.T._valid_values_of__retmode_and/?report=objectonly 
 		'''
-		handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode=retmode, rettype=rettype)
+
+		try:
+			handle = Entrez.efetch(db='nuccore', id=ncbi_access_id, retmode=retmode, rettype=rettype)
+		except urllib2.HTTPError as e:
+			logging.error('Entrez request failed: %s' % (str(e)))
+			return None
 		data = handle.read()
 		handle.close()
 
@@ -614,6 +901,9 @@ class MutationInfo(object):
 		else:
 			logging.info('Filename: %s does not exist. Querying ncbi through Entrez..' % (filename))
 			data = self._entrez_request(ncbi_access_id, retmode, rettype)
+			if data is None:
+				return None
+
 			self._save_ncbi_filename(ncbi_access_id, rettype, data)
 			logging.info('Filename: %s created.' % (filename))
 
@@ -796,6 +1086,8 @@ class MutationInfo(object):
 
 		List of all accessions
 		http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.refseq_accession_numbers_and_mole/?report=objectonly
+
+		Also: http://www.ncbi.nlm.nih.gov/books/NBK21091/table/ch18.T.entrez_queries_to_retrieve_sets_o/ 
 		'''
 
 		# Headers 
@@ -831,8 +1123,8 @@ class MutationInfo(object):
 		ret = search.group()[0:-1] # Remove '_'
 		return ret
 
-	@staticmethod
-	def _biopython_c2g_mapper(filename):
+	#@staticmethod
+	def _biopython_c2g_mapper(self, filename):
 		'''
 		See comments at top!
 
@@ -862,7 +1154,12 @@ class MutationInfo(object):
 					# Both input and output of the method are 0-based 
 					ret = int(cm.c2g(c_pos-1))+1
 				except IndexError as e:
-					logging.error('Could not convert from c. to g. Could not find position in exons. Error message: %s' % (str(e)))
+					self.current_fatal_error += ['Could not convert from c. to g. Could not find position in exons. Error message: %s' % (str(e))]
+					logging.error(self.current_fatal_error[-1])
+					return None
+				except biopython_GenomePositionError as e:
+					self.current_fatal_error += [str(e)]
+					logging.error(self.current_fatal_error[-1])
 					return None
 
 				return ret
@@ -1346,7 +1643,12 @@ class MutationInfo(object):
 			logging.info('Variant: %s . Mutalyzer variant filename: %s does not exist. Creating it..' % (variant, variant_filename))
 			variant_url = self.mutalyzer_url.format(variant=variant_url_encode)
 			logging.info('Variant: %s . Variant Mutalyzer url: %s' % (variant, variant_url))
-			Utils.download(variant_url, variant_filename)
+			try:
+				Utils.download(variant_url, variant_filename)
+			except urllib2.HTTPError as e:
+				print 'MUTALYZER CRASHED? : %s' % (str(e))
+				self.current_fatal_error += ['MUTALYZER CRASHED']
+				return None
 
 			#Check for errors
 			with open(variant_filename) as f:
@@ -1367,13 +1669,61 @@ class MutationInfo(object):
 		description = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[0].text
 		logging.info('Variant: %s . Found description: %s' % (variant, description))
 
-		new_variant_url = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code.a.get('href')
+		#new_variant_url = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code.a.get('href')
+		bs_results = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code
+		if bs_results is None:
+			self.current_fatal_error += ['MUTALYZER COULD NOT FIND GENOMIC LOCATION']
+			logging.error(self.current_fatal_error[-1])
+			return None
+		else:
+			new_variant_url = bs_results.a.get('href')
+
 		logging.info('Variant: %s . Found new variant url: %s' % (variant, new_variant_url))
 
 		new_variant = new_variant_url.split('=')[1]
 		new_variant = urllib.unquote(new_variant)
 		logging.info('Variant: %s . Found Genomic description: %s' % (variant, new_variant))
 
+		return new_variant
+
+	def search_mutalyzer_position_converter(self, variant):
+		'''
+		https://mutalyzer.nl/position-converter?assembly_name_or_alias=GRCh38&description=NM_017781.2%3Ac.166C%3ET
+		'''
+
+		variant_url_encode = urllib.quote(variant)
+
+		for mutalyzer_assembly in ['GRCh38', 'GRCh37']:
+			new_variant = None
+			print 'RUNNING MUTALYZER POSITION CONVERTER FOR ASSEMBLY:', mutalyzer_assembly
+
+			variant_url = 'https://mutalyzer.nl/position-converter?assembly_name_or_alias={}&description={}'.format(mutalyzer_assembly, variant_url_encode)
+			print 'MUTALYZER URL: %s' % variant_url
+
+			variant_filename = os.path.join(self.mutalyzer_directory, variant_url_encode + '_{}_position_converter.html'.format(mutalyzer_assembly))
+			print 'MUTALYZER FILENAME: %s' % variant_filename 
+
+		
+			if not Utils.file_exists(variant_filename):
+				print 'DOWNLOADING MUTALYZER URL'
+				Utils.download(variant_url, variant_filename)
+
+			with open(variant_filename) as f:
+				soup = BeautifulSoup(f)
+
+			#Check for errors
+			if len(soup.find_all(class_ = 'alert-danger')) > 0:
+				error_message = soup.find_all(class_ = 'alert-danger')[0].text
+				print 'MUTALYZER POSITION CONVERTER REPORTED ERROR:', error_message
+			else:
+				new_variant = soup.find_all('code')[4].text
+				break
+
+		if new_variant is None:
+			print 'MUTALYZER POSITION CONVERTER FAILED'
+			return None
+
+		print 'MUTALYZER POSITION CONVERTER REPORTED:', new_variant
 		return new_variant
 
 	def _search_ucsc(self, variant):
@@ -1419,29 +1769,36 @@ class MutationInfo(object):
 			if len(alternative) == 1:
 				alternative = alternative[0]
 
+			#In case of a deletion we need to make this correction in order to report the same position as in HGVS
+			#For example: rs113993960 
+			if alternative == '':
+				offset = offset - len(reference) + 1
 
-			ret.append(self._build_ret_dict(chrom, offset, reference, alternative, self.genome, 'UCSC'))
+			ret.append(self._build_ret_dict(chrom, offset, reference, alternative, self.ucsc_assembly, 'UCSC'))
 
 		if len(ret) == 1:
 			return ret[0]
 
 		return ret
 
-	def _search_VEP(self, variant):
+	def _search_VEP(self, variant, vep_assembly='grch38'):
 		'''
 		Variant Effect Predictor
 		'''
 
-		vep_assembly = 'grch38'
+		#vep_assembly = 'grch38'
 		#vep_assembly = 'grch37'
 
 		v = VEP(variant, assembly=vep_assembly)
+		logging.debug('VEP for for variant %s returned: %s' % (variant, str(v)))
 		if not type(v) is list:
-			logging.error('Variant: %s . VEP did not return a list: %s' % (variant, str(v)))
+			self.current_fatal_error += ['Variant: %s . VEP did not return a list: %s' % (variant, str(v))]
+			logging.error(self.current_fatal_error[-1])
 			return None
 
 		if len(v) == 0:
-			logging.error('Variant: %s . VEP returned an empty list' % (variant))
+			self.current_fatal_error += ['Variant: %s . VEP returned an empty list' % (variant)]
+			logging.error(self.current_fatal_error[-1])
 			return None
 
 		logging.info('Variant: %s . VEP returned %i results. Getting the info from the first' % (variant, len(v)))
@@ -1477,10 +1834,16 @@ class MutationInfo(object):
 		elif len(variant_alleles) == 0:
 			variant_alleles = u''
 
+		#In case of a deletion we need to make this correction in order to report the same position as in HGVS
+		#For example: rs113993960 
+		if variant_alleles == '':
+			offset = v[0]['start']
+		else:
+			offset = v[0]['end']
 
 		arguments = [
 			v[0]['seq_region_name'], # chrom
-			v[0]['start'], # offset
+			offset, # offset
 			reference, # ref
 			variant_alleles, # alt
 			v[0]['assembly_name'], # genome
@@ -1497,6 +1860,7 @@ class MutationInfo(object):
 			'alt' : args[3] if not args[3] is None else '',
 			'genome' : args[4],
 			'source' : args[5],
+			'notes' : args[6] if len(args)>6 else '', 
 		}
 
 
@@ -1506,7 +1870,10 @@ class Counsyl_HGVS(object):
 	Wrapper class for pyhgvs https://github.com/counsyl/hgvs 
 	'''
 
-	fasta_url_pattern = 'http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz'
+	# http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromFa.tar.gz 
+	# fasta_url_pattern = 'http://hgdownload.cse.ucsc.edu/goldenPath/{genome}/bigZips/chromFa.tar.gz'
+	fasta_url_hg19 = 'http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz'
+	fasta_url_hg38 = 'http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromFa.tar.gz'
 	refseq_url = 'https://github.com/counsyl/hgvs/raw/master/pyhgvs/data/genes.refGene'
 
 	def __init__(self, local_directory, genome='hg19'):
@@ -1549,7 +1916,13 @@ class Counsyl_HGVS(object):
 	def _install_fasta_files(self):
 		fasta_filename_tar_gz = os.path.join(self.fasta_directory, 'chromFa.tar.gz')
 		fasta_filename_tar = os.path.join(self.fasta_directory, 'chromFa.tar')
-		fasta_url = self.fasta_url_pattern.format(genome=self.genome)
+
+		#fasta_url = self.fasta_url_pattern.format(genome=self.genome)
+		if self.genome == 'hg19':
+			fasta_url = self.fasta_url_hg19
+		elif self.genome == 'hg38':
+			fasta_url = self.fasta_url_hg38
+
 		logging.info('Downloading from: %s' % fasta_url)
 		logging.info('Downloading to: %s' % fasta_filename_tar_gz)
 
@@ -1789,7 +2162,7 @@ def test():
 	print MutationInfo.biocommons_parse('unparsable')
 
 	mi = MutationInfo()
-	
+
 	print '-------Mutalyzer---------------------'
 	print mi._search_mutalyzer('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
 
@@ -1824,28 +2197,26 @@ def test():
 	print mi.get_info('rs773790593') # Both UCSC and VEP fail
 
 	info = mi.get_info('rs758320086') # Deletion detected by VEP
-	assert info == {'chrom': '22', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42128249, 'alt': u'', 'ref': u'AGTT'}
+	assert info == {'chrom': '22', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42128249, 'alt': u'', 'ref': u'AGTT',  'notes': ''}
 
-	info = mi.get_info('rs1799752') # Deletion from UCSC
-	assert info == {'chrom': '10', 'source': 'UCSC', 'genome': 'hg19', 'offset': 96796976L, 'alt': '', 'ref': 'CAA'} 
+	info = mi.get_info('rs1799752') # Deletion from UCSC , # UCSC Returnes lengthTooLong 
+	assert info == {'chrom': '17', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 63488529, 'alt': [u'ATACAGTCACTTTTTTTTTTTTTTTGAGACGGAGTCTCGCTCTGTCGCCC', u'G'], 'ref': u''}
 
-	info = mi.get_info('rs72466463') # Insertion from UCSC 
-	assert info == {'chrom': '2', 'source': 'UCSC', 'genome': 'hg19', 'offset': 38298287L, 'alt': 'GGTGGCATGA', 'ref': ''} 
+	info = mi.get_info('rs72466463') # Insertion from UCSC
+	assert info == {'chrom': '2', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 38071144, 'alt': u'GGTGGCATGA', 'ref': u''}
 
-	info = mi_get_info('rs8175347') # UCSC short tandem repeat (microsatellite) variation 
-	assert info == {'chrom': '2', 'source': 'UCSC', 'genome': 'hg19', 'offset': 234668882L, 'alt': ['(TA)5', '6', '7', '8'], 'ref': 'TA'} 
+	info = mi.get_info('rs8175347') # UCSC short tandem repeat (microsatellite) variation 
+	assert info == {'chrom': '2', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 233760236, 'alt': [u'TATATATATATATATA', u'TATATATATATATA', u'TATATATATATA'], 'ref': [u'(TA)5', u'(TA)6', u'(TA)7', u'(TA)8']}
 
-	info = mi_get_info('rs28399445') # UCSC Substitution
-	assert info == {'chrom': '19', 'source': 'UCSC', 'genome': 'hg19', 'offset': 41354170L, 'alt': 'T', 'ref': 'GC'} #  Check https://mutalyzer.nl/name-checker?description=NM_000762.5%3Ac.608_609delGCinsA 
+	info = mi.get_info('rs28399445') # UCSC Substitution
+	assert info == {'chrom': '19', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 40848265, 'alt': u'T', 'ref': u'GC'} #  Check https://mutalyzer.nl/name-checker?description=NM_000762.5%3Ac.608_609delGCinsA 
 
-	info = mi_get_info('rs267607275') # UCSC Multiple alleles 
-	assert info == {'chrom': '6', 'source': 'UCSC', 'genome': 'hg19', 'offset': 18149357L, 'alt': ['T', 'G'], 'ref': 'A'}
+	info = mi.get_info('rs267607275') # UCSC Multiple alleles 
+	assert info == {'chrom': '6', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 18149126, 'alt': [u'C', u'G'], 'ref': u'A'} 
+	#assert info == {'chrom': '6', 'source': 'UCSC', 'genome': 'hg19', 'offset': 18149357L, 'alt': ['T', 'G'], 'ref': 'A'}
 
-	info = mi_get_info('rs1799752') # UCSC Returned lengthTooLong 
-	assert info == {'chrom': '17', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 63488530, 'alt': [u'ATACAGTCACTTTTTTTTTTTTTTTGAGACGGAGTCTCGCTCTGTCGCCC', u'G'], 'ref': u''}  
-
-	info = mi_get_info('NG_008377.1:g.6502_6507delCTCTCT') # BLAT Deletion 
-	assert info == {'chrom': '19', 'source': 'BLAT', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'} 
+	info = mi.get_info('NG_008377.1:g.6502_6507delCTCTCT') # BLAT Deletion 
+	assert info == {'chrom': '19', 'notes': '', 'source': 'BLAT', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'}
 
 
 	print '=' * 20

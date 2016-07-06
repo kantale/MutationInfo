@@ -54,6 +54,7 @@ setup(name='MutationInfo',
             'beautifulsoup4',
             'pyhgvs>=0.0.1',
             'pyVEP>=0.0.1',
+            'myvariant', # https://pypi.python.org/pypi/myvariant/0.2.0 
       ],
       # http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
       dependency_links=[
