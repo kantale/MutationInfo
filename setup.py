@@ -33,6 +33,13 @@ except ImportError as e:
 		_ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
 
 
+try:
+      subprocess.call(['pg_config', '--version'])
+except:
+      print 'PostgreSQL does not seem to be installed'
+      print 'PostgreSQL is a dependency for BioPython (http://biopython.org/DIST/docs/biosql/python_biosql_basic.html#htoc2)'
+      _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
+
 setup(name='MutationInfo',
       version='0.0.1',
       description='Tool to retrieve meta-information of genetic variants',
