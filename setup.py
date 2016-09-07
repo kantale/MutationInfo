@@ -72,4 +72,24 @@ setup(name='MutationInfo',
       packages=['MutationInfo', 'biopython_mapper'],
 )
 
+# Check if psycopg2 is 'importable'
+try:
+      import psycopg2
+except ImportError as e:
+      if 'Library not loaded: libssl.1.0.0.dylib' in str(e):
+            print '='*10 + '==========' + '='*10
+            print ' '*10 + 'IMPORTANT:'
+            print '='*10 + '==========' + '='*10
+            print 'Module psycopg2 although installed cannot be imported properly. Error message:'
+            print '=' * 20
+            print str(e)
+            print '=' * 20
+            print 'To resolve this, before running MutationInfo set the following environment variable:'
+            lib_path = os.path.split(os.path.split(os.__file__)[0])[0]
+            DYLD_FALLBACK_LIBRARY_PATH = os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '') # Not used..
+            command = "export DYLD_FALLBACK_LIBRARY_PATH={}:$DYLD_FALLBACK_LIBRARY_PATH".format(lib_path)
+            print command
+            print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
+
+
 

@@ -21,7 +21,28 @@ from appdirs import *
 # Importing: https://bitbucket.org/biocommons/hgvs
 import hgvs as hgvs_biocommons
 import hgvs.parser as hgvs_biocommons_parser
-import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+try:
+	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+except ImportError as e:
+	if 'Library not loaded: libssl.1.0.0.dylib' in str(e):
+		print '='*10 + '==========' + '='*10
+		print ' '*10 + 'IMPORTANT:'
+		print '='*10 + '==========' + '='*10
+		print 'Module psycopg2 although installed cannot be imported properly. Error message:'
+		print '=' * 20
+		print str(e)
+		print '=' * 20
+		print 'To resolve this, before running MutationInfo set the following environment variable:'
+		lib_path = os.path.split(os.path.split(os.__file__)[0])[0]
+		DYLD_FALLBACK_LIBRARY_PATH = os.environ.get('DYLD_FALLBACK_LIBRARY_PATH', '') # Not used..
+		command = "export DYLD_FALLBACK_LIBRARY_PATH={}:$DYLD_FALLBACK_LIBRARY_PATH".format(lib_path)
+		print command
+		print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
+		sys.exit(1)
+	else:
+		# We do not know what caused this
+		raise e
+
 import hgvs.variantmapper as hgvs_biocommons_variantmapper 
 
 # Importing https://github.com/counsyl/hgvs 
