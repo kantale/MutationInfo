@@ -218,14 +218,19 @@ class MutationInfo(object):
 
 		# Set up cruzdb (UCSC)
 		logging.info('Setting up UCSC access..')
-		if 'ucsc_genome' in kwargs:
-			logging.info('Using UCSC GENOME: %s' % (kwargs['ucsc_genome']))
-			self.ucsc = UCSC_genome(kwargs['ucsc_genome'])
-			self.ucsc_assembly = kwargs['ucsc_genome']
-		else:
-			self.ucsc = UCSC_genome(self.genome)
-			self.ucsc_assembly = self.genome
-		self.ucsc_dbsnp = getattr(self.ucsc, self.dbsnp_version)
+		try:
+			if 'ucsc_genome' in kwargs:
+				logging.info('Using UCSC GENOME: %s' % (kwargs['ucsc_genome']))
+				self.ucsc = UCSC_genome(kwargs['ucsc_genome'])
+				self.ucsc_assembly = kwargs['ucsc_genome']
+			else:
+				self.ucsc = UCSC_genome(self.genome)
+				self.ucsc_assembly = self.genome
+			self.ucsc_dbsnp = getattr(self.ucsc, self.dbsnp_version)
+		except ImportError as e:
+			if 'No module named MySQLdb' in str(e):
+				logging.error('Please refer to https://github.com/kantale/MutationInfo/issues/7 in order to resolve this issue')
+			raise e
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -1916,7 +1921,11 @@ class Counsyl_HGVS(object):
 		else:
 			logging.info('Found fasta filename: %s' % self.fasta_filename)
 
-		self.sequence_genome = SequenceFileDB(self.fasta_filename)
+		try:
+			self.sequence_genome = SequenceFileDB(self.fasta_filename)
+		except TypeError as e:
+			logging.error('Please refer to https://github.com/kantale/MutationInfo/issues/6 to resolve this issue')
+			raise e
 		self._load_transcripts()
 
 	def hgvs_to_vcf(self, variant):
