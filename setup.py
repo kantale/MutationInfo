@@ -17,7 +17,7 @@ try:
 	import Bio
 except ImportError as e:
 	print 'Biopython is not installed'
-	# Check ig gcc exists.. 
+	# Check if gcc exists.. 
 	try:
 		subprocess.call(['gcc', '--version'])
 	except OSError as e:
@@ -30,6 +30,7 @@ except ImportError as e:
 			print 'Trying to run gcc produced the following error: %s' % (str(e))
 			print 'Not being able to run gcc might be a problem when installing biopython'
 		print '********************'
+		_ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
 
 
 setup(name='MutationInfo',
