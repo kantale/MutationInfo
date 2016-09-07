@@ -4,11 +4,11 @@ import sys
 import subprocess
 
 #Check python version
-if sys.version_info >= (3,0):
+if sys.version_info[:2] >= (3,0):
       print 'Sorry.. MutationInfo is a python 2 tool..'
       sys.exit(1)
 
-if sys.version_info < (2.7):
+if sys.version_info[:2] < (2.7):
       print 'Python 2.7 is required for MutationInfo'
       print 'Python version detected: ', str(sys.version_info)
       sys.exit(1)
@@ -50,7 +50,7 @@ except:
       _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
 
 setup(name='MutationInfo',
-      version='0.0.1',
+      version='1.0.0',
       description='Tool to retrieve meta-information of genetic variants',
       url='https://github.com/kantale/MutationInfo',
       author='Alexandros Kanterakis',
