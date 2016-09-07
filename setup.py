@@ -3,6 +3,16 @@ import os
 import sys
 import subprocess
 
+#Check python version
+if sys.version_info >= (3,0):
+      print 'Sorry.. MutationInfo is a python 2 tool..'
+      sys.exit(1)
+
+if sys.version_info < (2.7):
+      print 'Python 2.7 is required for MutationInfo'
+      print 'Python version detected: ', str(sys.version_info)
+      sys.exit(1)
+
 try:
 	from setuptools import setup
 except ImportError as e:
@@ -11,7 +21,6 @@ except ImportError as e:
 	print 'wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python '
 	print 'For more info please visit: https://pypi.python.org/pypi/setuptools'
 	sys.exit(1)
-
 
 try:
 	import Bio
