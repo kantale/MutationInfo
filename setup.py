@@ -100,5 +100,15 @@ except ImportError as e:
             print command
             print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
 
+      raise e
 
+
+try:
+      import hgvs
+except ImportError as e:
+      if 'cannot import name ExtendedInterpolation' in str(e):
+            print str(e)
+            print 'This is a known issue.'
+            print 'Please refer to https://github.com/kantale/MutationInfo/issues/9 in order to resolve it'
+      raise e
 

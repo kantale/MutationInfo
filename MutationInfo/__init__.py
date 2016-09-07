@@ -19,7 +19,16 @@ from Bio import Entrez, SeqIO
 from appdirs import *
 
 # Importing: https://bitbucket.org/biocommons/hgvs
-import hgvs as hgvs_biocommons
+try:
+	import hgvs as hgvs_biocommons
+except ImportError as e:
+	if 'cannot import name ExtendedInterpolation' in str(e):
+		print str(e)
+		print 'This is a known issue.'
+		print 'Please refer to https://github.com/kantale/MutationInfo/issues/9 in order to resolve it'
+	raise e
+
+
 import hgvs.parser as hgvs_biocommons_parser
 try:
 	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
@@ -77,7 +86,7 @@ except ImportError:
 
 
 __docformat__ = 'reStructuredText'
-__version__ = '0.0.1'
+__version__ = '1.0.0'
 
 """
 TODO: 
@@ -181,7 +190,7 @@ class MutationInfo(object):
 		if not email is None:
 			self.properties['email'] = email
 		elif not 'email' in self.properties:
-				self.properties['email'] = raw_input('I need an email to query Entrez. Please insert one: ')
+				self.properties['email'] = raw_input('I need an email to query Entrez. Please insert one (it will be stored for future access): ')
 		Entrez.email = self.properties['email']
 		logging.info('Using email for accessing Entrez: %s' % (str(Entrez.email)))
 
