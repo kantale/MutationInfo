@@ -28,9 +28,9 @@ except ImportError as e:
 		print 'Please refer to https://github.com/kantale/MutationInfo/issues/9 in order to resolve it'
 	raise e
 
-
 import hgvs.parser as hgvs_biocommons_parser
 try:
+	import psycopg2 # In order to catch psycopg2.OperationalError 
 	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
 except ImportError as e:
 	if 'Library not loaded: libssl.1.0.0.dylib' in str(e):
@@ -86,7 +86,7 @@ except ImportError:
 
 
 __docformat__ = 'reStructuredText'
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 """
 TODO: 
@@ -209,13 +209,7 @@ class MutationInfo(object):
 			genome = self.genome,
 			)
 
-		logging.info('Connecting to biocommons uta..')
-		self.biocommons_hdp = hgvs_biocommons_uta.connect()
-
-		# http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
-		self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
-		self.biocommons_vm_blat = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='blat')
-		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
+		self.biocommons_connect()
 
 		# Set up LOVD data 
 		self._lovd_setup()
@@ -246,6 +240,22 @@ class MutationInfo(object):
 
 		#Stores what went wrong during a conversion 
 		self.current_fatal_error = []
+
+	def biocommons_connect(self,):
+		'''
+		Establish a PostgreSQL connection. 
+		This connection might be timed out, so we might have to call this again when this happens.
+		See also issue #10
+		'''
+
+		logging.info('Connecting to biocommons uta..')
+		self.biocommons_hdp = hgvs_biocommons_uta.connect()
+
+		# http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+		self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
+		self.biocommons_vm_blat = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='blat')
+		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
+
 
 	@staticmethod
 	def biocommons_parse(variant):
@@ -829,15 +839,29 @@ class MutationInfo(object):
 					('genewise', self.biocommons_vm_genewise),
 				]:
 
-				try:
-					logging.info('Trying biocommon method: %s' % (biocommons_vm_name))
-					hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
-					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs_reference_assembly)
-					success = True
-				except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
-					logging.warning('Variant: %s . %s method failed: %s' % (variant, biocommons_vm_name, str(e)))
-				except hgvs_biocommons.exceptions.HGVSError as e:
-					logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
+				retry = 3
+				while retry:
+
+					try:
+						logging.info('Trying biocommon method: %s' % (biocommons_vm_name))
+						hgvs_reference_assembly = biocommons_vm_method.c_to_g(hgvs)
+						hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs_reference_assembly)
+						success = True
+						retry = 0
+					except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
+						logging.warning('Variant: %s . %s method failed: %s' % (variant, biocommons_vm_name, str(e)))
+						retry = 0
+					except hgvs_biocommons.exceptions.HGVSError as e:
+						logging.error('Variant: %s . biocommons reported error: %s' % (variant, str(e)))
+						retry = 0
+					except psycopg2.OperationalError as e: # Issue #10 
+						logging.warning('Caught: %s' % (str(e)))
+						if retry == 1:
+							logging.error('Maximum connection tries reached')
+						else:
+							logging.info('Re-establishing connection.. %i' % (4-retry))
+							self.biocommons_connect()
+						retry -= 1
 
 				if success:
 					break

@@ -50,7 +50,7 @@ except:
       _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
 
 setup(name='MutationInfo',
-      version='1.0.0',
+      version='1.0.1',
       description='Tool to retrieve meta-information of genetic variants',
       url='https://github.com/kantale/MutationInfo',
       author='Alexandros Kanterakis',
