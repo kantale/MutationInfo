@@ -29,11 +29,21 @@ except ImportError as e:
 	raise e
 
 import hgvs.parser as hgvs_biocommons_parser
+
 try:
 	import psycopg2 # In order to catch psycopg2.OperationalError 
 	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+	import hgvs.variantmapper as hgvs_biocommons_variantmapper 
+
 except ImportError as e:
-	if 'Library not loaded: libssl.1.0.0.dylib' in str(e):
+
+	if 'sphinx' in sys.modules:
+		# Ignore this. These packages are not required for doc building.
+		# Credits to http://stackoverflow.com/questions/20843737/check-if-sphinx-doc-called-the-script for the tip.
+		pass 
+
+	elif 'Library not loaded: libssl.1.0.0.dylib' in str(e):
+
 		print '='*10 + '==========' + '='*10
 		print ' '*10 + 'IMPORTANT:'
 		print '='*10 + '==========' + '='*10
@@ -48,11 +58,10 @@ except ImportError as e:
 		print command
 		print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
 		sys.exit(1)
+		#raise e
 	else:
 		# We do not know what caused this
 		raise e
-
-import hgvs.variantmapper as hgvs_biocommons_variantmapper 
 
 # Importing https://github.com/counsyl/hgvs 
 # How to setup data files : https://github.com/counsyl/hgvs/blob/master/examples/example1.py 
