@@ -1,5 +1,6 @@
 
 import os
+import re
 import sys
 import subprocess
 
@@ -25,29 +26,46 @@ except ImportError as e:
 try:
 	import Bio
 except ImportError as e:
-	print 'Biopython is not installed'
-	# Check if gcc exists.. 
-	try:
-		subprocess.call(['gcc', '--version'])
-	except OSError as e:
-		print '***** WARNING ******'
-		if e.errno == os.errno.ENOENT:
-			print 'Before installing biopython you may need to install a C compiler such as gcc.'
-			print 'gcc and other necessary libraries can be installed on Linux with the following command:'
-			print 'sudo apt-get install gcc python-dev libpq-dev python-pip python-mysqldb-dbg'			
-		else:
-			print 'Trying to run gcc produced the following error: %s' % (str(e))
-			print 'Not being able to run gcc might be a problem when installing biopython'
-		print '********************'
-		_ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
+      print 'Biopython is not installed'
+      # Check if gcc exists.. 
+      try:
+            subprocess.call(['gcc', '--version'])
+      except OSError as e:
+            print '***** WARNING ******'
+            if e.errno == os.errno.ENOENT:
+                  print 'Before installing biopython you may need to install a C compiler such as gcc.'
+                  print 'gcc and other necessary libraries can be installed on Linux with the following command:'
+                  print 'sudo apt-get install gcc python-dev libpq-dev python-pip python-mysqldb-dbg'			
+            else:
+                  print 'Trying to run gcc produced the following error: %s' % (str(e))
+                  print 'Not being able to run gcc might be a problem when installing biopython'
+            print '********************'
+            _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
 
 
 try:
-      subprocess.call(['pg_config', '--version'])
+      #subprocess.call(['pg_config', '--version'])
+      pg_v = None
+      pg_version = subprocess.check_output(['pg_config', '--version']) # i.e. 'PostgreSQL 9.4.4\n' 
+      pg_s = re.search(r'([\d]+)\.([\d]+)\.([\d]+)', pg_version)
+      pg_v = (int(pg_s.group(1)), int(pg_s.group(2)), int(pg_s.group(3)))
+
 except:
       print 'PostgreSQL does not seem to be installed'
       print 'PostgreSQL is a dependency for BioPython (http://biopython.org/DIST/docs/biosql/python_biosql_basic.html#htoc2)'
       _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
+
+# psycopg2 does not seem to work for before a certain version of PostgreSQL 
+# We took the last working version from here: https://github.com/psycopg/psycopg2/blob/master/tests/test_connection.py#L434
+# Also: https://github.com/kantale/MutationInfo/issues/16 
+if pg_v:
+      if pg_v < (9,2,0):
+            print 'Your current PostgreSQL version is: %s' % (str(pg_v))
+            print 'This is lower than 9.2.0 which is the highest version of PostgreSQL that is compatible with psycopg2.'
+            print 'psycopg2 is the PostgreSQL driver that certain MutationInfo tools (biocommons hgvs) are using.'
+            _ = raw_input("Press Enter to continue or Ctrl-C to stop.. ")
+
+
 
 setup(name='MutationInfo',
       version='1.0.1',

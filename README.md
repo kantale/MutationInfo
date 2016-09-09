@@ -51,6 +51,17 @@ Then the first time you instantiate the MutationInfo class, it installs all requ
 from MutationInfo import MutationInfo
 mi = MutationInfo()
 ```
+### Installation in Ubuntu
+Before installing in Ubuntu Linux, make sure that the following packages / tools are installed:
+
+```bash
+sudo apt-get update
+sudo apt-get install git
+sudo apt-get install gcc python-dev libpq-dev python-pip python-mysqldb-dbg
+
+wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python
+```
+
 
 Important! Requires 13 GB of disk space.
 
