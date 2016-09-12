@@ -900,23 +900,32 @@ class MutationInfo(object):
 		except IndexError as e:
 			logging.warning('Variant: %s . pyhgvs IndexError: %s' % (variant, str(e)))
 
-		logging.info('counsyl pyhgvs failed...')
+		logging.info('Variant: %s counsyl pyhgvs failed...' % (str(variant)))
 
 		logging.info('Variant: %s Trying Mutalyzer..' % (str(variant)) )
 		ret = self.get_info_mutalyzer(variant)
 		if ret:
 			return ret
-		logging.warning('Mutalyzer failed..')
+		logging.warning('Variant: %s Mutalyzer failed..' % (str(variant)))
 
-		logging.info('Trying LOVD..')
+		logging.info('Variant: %s . Trying BLAT search..' % (str(variant)))
+		ret = self.get_info_BLAT(self, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
+		if ret:
+			return ret
+		logging.warning('Variant: %s BLAT search failed.' % (str(variant)))
+
+		# As a measure of last resort, try LOVD...
+		logging.info('Variant: %s Trying LOVD..' % (str(variant)))
 		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
 		if not lovd_chrom is None:
-			logging.warning('***SERIOUS*** strand of variant has not been checked!')
-			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD')
+			warning = '***SERIOUS*** strand of variant has not been checked!'
+			logging.warning(warning)
+			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD', warning)
+		logging.info('Variant: %s . LOVD failed..' % (str(variant)))
 
-		logging.info('LOVD failed..')
-
-		return self.get_info_BLAT(self, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
+		# Pipeline failed
+		logging.error('Variant: %s . ALL METHODS FAILED!' % (str(variant)))
+		return None
 
 
 	@staticmethod
