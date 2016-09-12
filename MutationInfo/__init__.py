@@ -429,7 +429,7 @@ class MutationInfo(object):
 
 		if hgvs_type != 'c':
 			print 'INVESTIGATE MORE... 5681'
-			a=1/0
+			assert False
 
 
 		for method_name, method in [('bc_splign', self.biocommons_vm_splign), ('bc_blat', self.biocommons_vm_blat), ('bc_genewise', self.biocommons_vm_genewise)]:
@@ -445,7 +445,7 @@ class MutationInfo(object):
 				search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
 				if search is None:
 					print 'INVESTIGATE MORE.... 9834'
-					a=1/0
+					assert False
 				entrez_chromosome = search.group(1)
 				entrez_genome = search.group(2)
 			except hgvs_biocommons.exceptions.HGVSDataNotAvailableError as e:
@@ -477,28 +477,37 @@ class MutationInfo(object):
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
 		except KeyError as e:
-			print 'COUNSYL REPORTED: %s' % (str(e))
+			logging.error('COUNSYL REPORTED: %s' % (str(e)))
 			return {}
 		except ValueError as e:
-			print 'COUNSYL REPORTED: %s' % (str(e))
+			logging.error('COUNSYL REPORTED: %s' % (str(e)))
 			return {}
 		except hgvs_counsyl.InvalidHGVSName as e:
-			print 'COULD NOT PARSE VARIANT WITH COUNSYL: %s' % (str(e))
+			logging.error('COULD NOT PARSE VARIANT WITH COUNSYL: %s' % (str(e)))
 			return {}
 		return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
 
 	def get_info_mutalyzer(self, variant):
 		#print self._search_mutalyzer(variant)
+		logging.debug('Variant: %s TRYING MUTALYZER POSITION CONVERTER..' % (str(variant)))
 		new_variant = self.search_mutalyzer_position_converter(variant)
 		if new_variant is None:
-			print 'MUTALYZER POSITION CONVERTER FAILED'
-			print 'TRYING MAIN MUTALYZER..'
+			logging.debug('Variant: %s MUTALYZER POSITION CONVERTER FAILED' % (str(variant)))
+			logging.debug('Variant: %s TRYING MAIN MUTALYZER..' % (str(variant)))
 			new_variant_mutalyzer = self._search_mutalyzer(variant)
-			print 'MAIN MUTALYZER REPORTED NEW VARIANT:', new_variant_mutalyzer
+			logging.debug('Variant: %s MAIN MUTALYZER REPORTED NEW VARIANT: %s' % (str(variant), str(new_variant_mutalyzer)))
 			if new_variant_mutalyzer is None:
-				print 'MAIN MUTALYZER FAILED'
+				logging.error('Variant: %s MAIN MUTALYZER FAILED' % (str(variant)))
 				return {'notes': ' / '.join(self.current_fatal_error)}
-			print 'RUNNING BLAT..'
+
+			# Sometimes Main mutalyzer + Position converter return the same variant without the reference.
+			# for example in NG_008377.1:g.6502_6507delCTCTCT --> NG_008377.1:g.6502_6504del 
+			if variant.startswith(new_variant_mutalyzer) and len(new_variant_mutalyzer) < len(variant):
+				# We lost information!
+				logging.debug('Variant: %s . Switching back to %s' % (str(variant), str(variant)))
+				new_variant_mutalyzer = variant
+
+			logging.debug('RUNNING BLAT for %s' % (str(new_variant_mutalyzer)))
 			new_variant_snp_info = self.get_info_BLAT(new_variant_mutalyzer)
 			ret =self._build_ret_dict(
 				new_variant_snp_info['chrom'],
@@ -512,7 +521,7 @@ class MutationInfo(object):
 			return ret
 
 #			print 'INVESTIGATE MORE.. 4912'
-#			a=1/0
+#			assert False
 
 		new_variant = str(new_variant)
 
@@ -525,7 +534,7 @@ class MutationInfo(object):
 		search = re.search(r'Homo sapiens chromosome ([\w]+), ([\w\.]+) Primary Assembly', ncbi_info)
 		if search is None:
 			print 'INVESTIGATE MORE.. 5910'
-			a=1/0
+			assert False
 
 		ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'Mutalyzer')
 		return ret
@@ -556,7 +565,7 @@ class MutationInfo(object):
 		notes = ''
 
 		if hgvs_transcript is None:
-			print 'PARSING VARIANT WITH BIOCOMMONS'
+			print 'PARSING VARIANT: %s WITH BIOCOMMONS' % str(variant)
 			hgvs = MutationInfo.biocommons_parse(variant)
 			if not hgvs is None:
 				hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
@@ -722,6 +731,7 @@ class MutationInfo(object):
 		hgvs_type = hgvs.type
 		hgvs_position = hgvs.posedit.pos.start.base
 		hgvs_reference = hgvs.posedit.edit.ref
+		print '123 : ', hgvs_reference
 		if hasattr(hgvs.posedit.edit, 'alt'):
 			hgvs_alternative = hgvs.posedit.edit.alt
 		else:
@@ -1546,7 +1556,7 @@ class MutationInfo(object):
 					logging.error('Entrez XML file: %s , path: %s . Could not find Seq-loc_int OR Seq-loc_mix . Existing keys: %s' % (filename, loc_path, str(loc_current_entry.keys())))
 					return None
 				else:
-					a=1/0
+					assert False
 
 #			sequence_from = loc_current_entry
 
@@ -1701,6 +1711,9 @@ class MutationInfo(object):
 
 	def _search_mutalyzer(self, variant, gene=None, **kwargs):
 		'''
+		Warning: It removes reference information in indels
+		For NG_008377.1:g.6502_6507delCTCTCT it returns NG_008377.1:g.6502_6507del . 
+		https://mutalyzer.nl/name-checker?description=NG_008377.1%3Ag.6502_6507delCTCTCT
 		'''
 
 		#Check if gene is defined
@@ -1729,7 +1742,7 @@ class MutationInfo(object):
 			try:
 				Utils.download(variant_url, variant_filename)
 			except urllib2.HTTPError as e:
-				print 'MUTALYZER CRASHED? : %s' % (str(e))
+				logging.error('Variant: %s . MUTALYZER CRASHED? : %s' % (str(variant), str(e)))
 				self.current_fatal_error += ['MUTALYZER CRASHED']
 				return None
 
@@ -2303,7 +2316,7 @@ def test():
 	#assert info == {'chrom': '6', 'source': 'UCSC', 'genome': 'hg19', 'offset': 18149357L, 'alt': ['T', 'G'], 'ref': 'A'}
 
 	info = mi.get_info('NG_008377.1:g.6502_6507delCTCTCT') # BLAT Deletion 
-	assert info == {'chrom': '19', 'notes': '', 'source': 'BLAT', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'}
+	assert info == {'chrom': '19', 'notes': ' / Mutalyzer did c_g conversion, INFO BY BLAT', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'}
 
 
 	print '=' * 20
