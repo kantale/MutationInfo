@@ -902,6 +902,12 @@ class MutationInfo(object):
 
 		logging.info('counsyl pyhgvs failed...')
 
+		logging.info('Variant: %s Trying Mutalyzer..' % (str(variant)) )
+		ret = self.get_info_mutalyzer(variant)
+		if ret:
+			return ret
+		logging.warning('Mutalyzer failed..')
+
 		logging.info('Trying LOVD..')
 		lovd_chrom, lovd_pos_1, lovd_pos_2, lovd_genome = self._search_lovd(hgvs_transcript, 'c.' + str(hgvs.posedit))
 		if not lovd_chrom is None:
