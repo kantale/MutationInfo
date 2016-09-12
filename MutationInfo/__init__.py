@@ -487,14 +487,14 @@ class MutationInfo(object):
 			return {}
 		return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
 
-	def get_info_mutalyzer(self, variant):
+	def get_info_mutalyzer(self, variant, gene=None):
 		#print self._search_mutalyzer(variant)
 		logging.debug('Variant: %s TRYING MUTALYZER POSITION CONVERTER..' % (str(variant)))
 		new_variant = self.search_mutalyzer_position_converter(variant)
 		if new_variant is None:
 			logging.debug('Variant: %s MUTALYZER POSITION CONVERTER FAILED' % (str(variant)))
-			logging.debug('Variant: %s TRYING MAIN MUTALYZER..' % (str(variant)))
-			new_variant_mutalyzer = self._search_mutalyzer(variant)
+			logging.debug('Variant: %s TRYING MAIN MUTALYZER.. GENE=%s' % (str(variant), str(gene)))
+			new_variant_mutalyzer = self._search_mutalyzer(variant, gene=gene)
 			logging.debug('Variant: %s MAIN MUTALYZER REPORTED NEW VARIANT: %s' % (str(variant), str(new_variant_mutalyzer)))
 			if new_variant_mutalyzer is None:
 				logging.error('Variant: %s MAIN MUTALYZER FAILED' % (str(variant)))
@@ -640,6 +640,7 @@ class MutationInfo(object):
 			else:
 				notes = 'Variant: %s . ***SERIOUS*** Reference on fasta (%s) and Reference on variant name (%s) are different!' % (variant, fasta_reference, hgvs_reference)
 				logging.error(notes)
+				self.current_fatal_error.append(notes)
 
 		logging.info('Variant: %s . Fasta length: %i' % (variant, len(fasta)))
 		logging.info('Variant: %s . Variant position: %i' % (variant, hgvs_position))
@@ -723,7 +724,7 @@ class MutationInfo(object):
 			hgvs_reference = self.inverse(hgvs_reference)
 			hgvs_alternative = self.inverse(hgvs_alternative)
 
-		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome, 'BLAT', notes)
+		ret = self._build_ret_dict(chrom, human_genome_position, hgvs_reference, hgvs_alternative, self.genome, 'BLAT', ' / '.join(self.current_fatal_error))
 		return ret
 
 	def get_elements_from_hgvs(self, hgvs):
@@ -731,7 +732,6 @@ class MutationInfo(object):
 		hgvs_type = hgvs.type
 		hgvs_position = hgvs.posedit.pos.start.base
 		hgvs_reference = hgvs.posedit.edit.ref
-		print '123 : ', hgvs_reference
 		if hasattr(hgvs.posedit.edit, 'alt'):
 			hgvs_alternative = hgvs.posedit.edit.alt
 		else:
@@ -913,14 +913,15 @@ class MutationInfo(object):
 		logging.info('Variant: %s counsyl pyhgvs failed...' % (str(variant)))
 
 		logging.info('Variant: %s Trying Mutalyzer..' % (str(variant)) )
-		ret = self.get_info_mutalyzer(variant)
-		if ret:
+		ret = self.get_info_mutalyzer(variant, **kwargs)
+		if ret and len(ret) > 2:
 			return ret
 		logging.warning('Variant: %s Mutalyzer failed..' % (str(variant)))
 
 		logging.info('Variant: %s . Trying BLAT search..' % (str(variant)))
-		ret = self.get_info_BLAT(self, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
-		if ret:
+		print kwargs
+		ret = self.get_info_BLAT(variant=variant, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
+		if ret and len(ret) > 2:
 			return ret
 		logging.warning('Variant: %s BLAT search failed.' % (str(variant)))
 
@@ -1742,8 +1743,9 @@ class MutationInfo(object):
 			try:
 				Utils.download(variant_url, variant_filename)
 			except urllib2.HTTPError as e:
-				logging.error('Variant: %s . MUTALYZER CRASHED? : %s' % (str(variant), str(e)))
-				self.current_fatal_error += ['MUTALYZER CRASHED']
+				error_message = 'Variant: %s . MUTALYZER CRASHED? : %s' % (str(variant), str(e))
+				logging.error(error_message)
+				self.current_fatal_error += [error_message]
 				return None
 
 			#Check for errors
@@ -1752,9 +1754,10 @@ class MutationInfo(object):
 
 			alert_danger = soup.find_all(class_="alert alert-danger")
 			if len(alert_danger) > 0:
-				logging.error('Variant: %s Mutalyzer returned the following critical error:' % (variant))
-				logging.error(alert_danger[0].text)
-				logging.error('Variant file will not be saved')
+				error_message = 'Variant: %s . Mutalyzer returned the following critical error: %s' % (variant, alert_danger[0].text)
+				logging.error(error_message)
+				self.current_fatal_error += [error_message]
+				logging.error('Variant: %s . Variant file will not be saved' % (variant))
 				os.remove(variant_filename)
 				return None
 
@@ -2286,15 +2289,27 @@ def test():
 	print mi.get_info('J02843.1:c.7632T>A') # Test biopython c2g, this position is out of exon boundaries
 	print mi.get_info('X17059.1:c.1091insAAA') # No exons and no mRNA
 	print mi.get_info('AY545216.1:g.8326_8334dupGTGCCCACT')
-	print mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
-	print mi.get_info('NM_000367.2:c.-178C>T')
-	print mi.get_info('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
+	info = mi.get_info('NT_005120.15:c.-1126C>T', gene='UGT1A1')
+	assert info == {'chrom': '2', 'notes': u'Variant: NT_005120.15(UGT1A1):c.-1126C>T . Mutalyzer returned the following critical error: C not found at position 600562, found G instead. / Variant: NT_005120.15:c.-1126C>T . ***SERIOUS*** Reference on fasta (A) and Reference on variant name (C) are different!', 'source': 'BLAT', 'genome': 'hg19', 'offset': 234069238, 'alt': 'T', 'ref': 'C'}
+
+	info = mi.get_info('NM_000367.2:c.-178C>T')
+	assert info == {'chrom': '6', 'notes': '', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'}
+
+	info = mi.get_info('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
+	assert info == {'chrom': '2', 'notes': ' / Mutalyzer did c_g conversion, INFO BY BLAT', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 234675608, 'alt': 'G', 'ref': 'T'}
 
 	# Testing rs SNPs
-	print mi.get_info('rs53576')
-	print mi.get_info('rs4646438') # insertion variation 
-	print mi.get_info('rs305974') # This SNP is not in UCSC 
-	print mi.get_info('rs773790593') # Both UCSC and VEP fail
+	info = mi.get_info('rs53576')
+	assert info == {'chrom': '3', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 8762685, 'alt': u'G', 'ref': u'A'}
+
+	info = mi.get_info('rs4646438') # insertion variation 
+	assert info == {'chrom': '7', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 99766411, 'alt': u'T', 'ref': u''}
+
+	info = mi.get_info('rs305974') # This SNP is not in UCSC 
+	assert info == {'chrom': '19', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 41121963, 'alt': u'A', 'ref': u'G'}
+
+	info = mi.get_info('rs773790593') # Both UCSC and VEP fail
+	assert info == {'chrom': '22', 'notes': '', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42130778, 'alt': u'A', 'ref': u'G'}
 
 	info = mi.get_info('rs758320086') # Deletion detected by VEP
 	assert info == {'chrom': '22', 'source': 'VEP', 'genome': u'GRCh38', 'offset': 42128249, 'alt': u'', 'ref': u'AGTT',  'notes': ''}
