@@ -120,7 +120,36 @@ class MutationInfoException(Exception):
 	pass
 
 class MutationInfo(object):
-	"""The MutationInfo class contains methods to get variant information 
+	"""The MutationInfo class handles all necessary connections to various sources in order to assess the chromosomal position of a variant.
+The first time that this class is instantiated it downloads the reference genome in fasta format and splits it per chromosome. 
+This might take approximately 13GB of disc space. 
+
+MutationInfo offers a single method for accessing the complete functionality of the module: :py:func:`get_info`. 
+
+This class does not have any required arguments for initialization. Nevertheless the following optional arguments are supported:
+
+:param local_directory: The local directory where the fasta files will be stored. By default MutationInfo uses \
+the `appdirs <https://pypi.python.org/pypi/appdirs>`_ module in order to create a platform specifc local directory. \
+This directory is also used as a cache. Whenever there is a succesful attempt to access an external service, the acquired object is saved to \
+local_directory for future reference. 
+
+:param email: An email is required to connect with Entrez through biopython (see also this: http://biopython.org/DIST/docs/api/Bio.Entrez-module.html). \
+If not set, MutationInfo looks for an email entry in the file stored in ``<local_directory>/properties.json``. \
+If this file does not exist (for example when the class is instantiated for the first time), \
+then it requests one email from the user and stores it in the ``properties.json`` file. 
+
+:param genome: The version of the **preferred** human genome assembly that will be used for reporting chromosomal positions. \
+Accepted values should have the ``hgXX`` format. Default value is *hg19*.
+
+	.. warning:: 
+		MutationInfo does not guarantee that the returned position is aligned according to the ``genome`` parameter \
+		since certain tools work only with specific genome assemblies. For this reason always check the ``genome`` key of the returned \
+		item after calling the :py:func:`get_info` method. 
+
+:param ucsc_genome: Set the version of human genome assembly explicitly for the CruzDB tool (UCSC). \
+Default: Same as the ``genome`` parameter. 
+
+:param dbsnp_version: The version of dbsnp for rs variants. Default value is *snp146*.
 
 	"""
 
@@ -749,6 +778,8 @@ class MutationInfo(object):
 	def get_info(self, variant, **kwargs):
 		"""
 		Doing our best to get the most out of a variant name
+
+
 
 		:param variant: A variant or list of variants
 

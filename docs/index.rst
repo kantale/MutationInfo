@@ -6,12 +6,20 @@
 Welcome to MutationInfo's documentation!
 ========================================
 
+The Sphinx Documentation of MutationInfo is under construction.
+Please refer to `README.md <https://github.com/kantale/MutationInfo/blob/master/README.md>`_ file
+for current and up-to-date documentation. 
+
+.. autoclass:: MutationInfo.MutationInfo
+  :members: get_info
+
 Contents:
 
 .. toctree::
    :maxdepth: 2
 
-.. automodule:: MutationInfo
+..
+  .. automodule:: MutationInfo
     :members:
     :undoc-members:
     :inherited-members:
