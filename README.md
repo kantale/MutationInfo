@@ -41,6 +41,9 @@ If all the aforementioned methods fail then:
 * Perform a [blat search](https://genome.ucsc.edu/cgi-bin/hgBlat?command=start) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
 
 ## Installation 
+
+Important! Requires 13 GB of disk space.
+
 To install MutationInfo, download the package and run:
 ```bash
 python setup.py install
@@ -62,8 +65,15 @@ sudo apt-get install gcc python-dev libpq-dev python-pip python-mysqldb-dbg
 wget https://bootstrap.pypa.io/ez_setup.py -O - | sudo python
 ```
 
+### Test 
+To verify that everything works fine run: ```python test.py``` in [test/](test/) directory. The output after the long log messages should be:
+```
+----------------------------------------------------------------------
+Ran 6 tests in 21.923s
 
-Important! Requires 13 GB of disk space.
+OK
+```
+
 
 ## Contact 
 [Alexandros Kanterakis](mailto:kantale@ics.forth.gr)
