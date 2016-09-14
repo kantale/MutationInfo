@@ -92,7 +92,19 @@ To verify that everything works fine run: ``python test.py`` in ``test/`` direct
 
   OK
 
-Contact 
-=======
+Troubleshooting
+---------------
 
-`Alexandros Kanterakis <mailto:kantale@ics.forth.gr>`_
+Possible problems from installing / running MutationInfo are:
+
+* Exception: ``psycopg2.OperationalError: invalid connection option "application_name"``
+   See also: https://github.com/kantale/MutationInfo/issues/16 . Most likely, the version of PostgreSQL in your system is too old. 
+* Exception: ``ImportError: cannot import name ExtendedInterpolation``
+   See also: https://github.com/kantale/MutationInfo/issues/9 . One solution is to downgrade the ``future`` package. In that case, it is a good practice to 
+   run MutationInfo in a virtualenv so that the whole system is not affected.
+* Exception: ``ImportError: No module named MySQLdb`` 
+   See also: https://github.com/kantale/MutationInfo/issues/7 . mysql is not installed in the system.
+* Error Message: ``Library not loaded: libssl.1.0.0.dylib`` 
+   See: https://github.com/kantale/MutationInfo/issues/5 . 
+
+

@@ -794,7 +794,7 @@ Default: Same as the ``genome`` parameter.
 		- ``MYVARIANTINFO`` : Use `MyVariant.info <http://myvariant.info/>`_ (only for dbsnp variants)
 		- ``BIOCOMMONS`` : Use `Biocommons HGVS <https://bitbucket.org/biocommons/hgvs>`_ (only for HGVS variants)
 		- ``COUNSYL`` : Use `Counsyl HGVS <https://github.com/counsyl/hgvs>`_ (only for HGVS variants)
-		- ``MUTALYZER`` : Use `Mutaluzer <https://mutalyzer.nl/>`_ (only for HGVS variants)
+		- ``MUTALYZER`` : Use `Mutalyzer <https://mutalyzer.nl/>`_ (only for HGVS variants)
 		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
 		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
 
@@ -812,16 +812,13 @@ Default: Same as the ``genome`` parameter.
 
 		An example of output is the following:
 
-		.. code-block:: python
+		:Example:
 
-			from MutationInfo import MutationInfo as MI
-			mi = MI()
-
-			i = mi.get_info('NM_000367.2:c.-178C>T')
-			print i
-
-			{'chrom': '6', 'notes': '', 'source': 'counsyl_hgvs_to_vcf', 
-			'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'}
+		>>> from MutationInfo import MutationInfo
+		>>> mi = MutationInfo()
+		>>> info = mi.get_info('NM_000367.2:c.-178C>T')
+		>>> print info
+		{'chrom': '6', 'notes': '', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'}
 
 
 		"""

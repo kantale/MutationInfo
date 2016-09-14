@@ -78,6 +78,8 @@ Ran 6 tests in 21.923s
 OK
 ```
 
+## License 
+MIT License (MIT)
 
 ## Contact 
 [Alexandros Kanterakis](mailto:kantale@ics.forth.gr)
