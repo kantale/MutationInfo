@@ -9,9 +9,9 @@ Welcome to MutationInfo's documentation!
 MutationInfo is a python package to extract the position, the reference and the alternative sequence of a genomic variant. 
 It accepts variants in `dbSNP <http://www.ncbi.nlm.nih.gov/SNP/>`_ rs format or in `HGVS <http://www.hgvs.org/mutnomen/>`_ format.
 
-The Sphinx Documentation of MutationInfo is under construction.
-Please refer to `README.md <https://github.com/kantale/MutationInfo/>`_ file
-for current and up-to-date documentation. 
+Source: https://github.com/kantale/MutationInfo/ 
+License: 
+
 
 Contents:
 
