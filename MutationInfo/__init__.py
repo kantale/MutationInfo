@@ -913,7 +913,7 @@ Default: Same as the ``genome`` parameter.
 			logging.info('Variant: %s . Trying to reparse with Mutalyzer and get the genomic description' % (variant))
 			new_variant = self._search_mutalyzer(variant, **kwargs)
 			if new_variant is None:
-				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do..' % (variant))
+				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do.. (could not parse variant)' % (variant))
 				#print self._search_VEP(variant)
 				return None
 			logging.info('Variant: %s . rerunning get_info with variant=%s' % (variant, new_variant))

@@ -33,17 +33,20 @@ MutationInfo tries to infer the position, reference and alternative of a variant
     * If this fails, access the `UCSC tables <https://genome.ucsc.edu/cgi-bin/hgTables>_ through the `cruzdb <https://pypi.python.org/pypi/cruzdb>`_ package. 
 * If the variant is in HGVS then:
     * Try to parse the variant with the `biocommon/hgvs <https://bitbucket.org/biocommons/hgvs>`_ parser. 
-    * If the parse fails then look if the variant contains some common mistakes in HGVS formatting. Correct if possible and then try again. For example remove parenthesis in the following variant: `NM_001042351.1:-1923(A>C)`
-    * If parse still fails then make a request to the `mutalyzer.nl <https://mutalyzer.nl/>`_ . For example `NT_005120.15:c.IVS1-72T>G` is parsed only from mutalyzer but not from biocommons/hgvs
+    * If the parse fails then look if the variant contains some common mistakes in HGVS formatting. Correct if possible and then try again. For example remove parenthesis in the following variant: ``NM_001042351.1:-1923(A>C)``
+    * If parse still fails then make a request to the `mutalyzer.nl <https://mutalyzer.nl/>`_ . For example ``NT_005120.15:c.IVS1-72T>G`` is parsed only from mutalyzer but not from biocommons/hgvs
+    * If neither of these methods are able to parse the variant then return ``None``. 
     * If biocommons/hgvs parses the variant then use the `variantmapper <http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript>`_ method to locate the location of the variant in the reference assembly.
-    * If this method fails (for example `M61857.1:c.121A>G` crashes mutalyzer!) then use the `pyhgvs <https://github.com/counsyl/hgvs>`_ package and the `hgvs_to_vcf` method to convert the variant in a `VCF <https://en.wikipedia.org/wiki/Variant_Call_Format>`_ entry.
-    * If this method fails then look at the `LOVD <http://www.lovd.nl/3.0/home>`_ database.
+    * If this method fails then use the `pyhgvs <https://github.com/counsyl/hgvs>`_ package and the `hgvs_to_vcf` method to convert the variant in a `VCF <https://en.wikipedia.org/wiki/Variant_Call_Format>`_ entry.
+    * If this method fails then use Mutalyzer's `Position Converter <https://mutalyzer.nl/position-converter>`_ 
+    * if this method fails then use the Mutalyzer's `Name Checker <https://mutalyzer.nl/>`_ which generates a genomic description of the variant. Then perform a `blat search <https://genome.ucsc.edu/cgi-bin/hgBlat?command=start>`_) with this variant (see below).
+    * If both methods from Mutalyzer fail (for example ``M61857.1:c.121A>G`` crashes mutalyzer!) then:
+        * Download the FASTA sequence of the trascript of the variant from `NCBI database <http://www.ncbi.nlm.nih.gov/nuccore>`_.
+        * If the position of the variant is in coding (c.) coordinates then convert to genomic (g.) coordinates. To do that, we use the `Coordinate mapper <https://github.com/lennax/biopython/tree/f_loc5/Bio/SeqUtils/Mapper>`_ addition of biopython.
+        * Perform a `blat search <https://genome.ucsc.edu/cgi-bin/hgBlat?command=start>`_) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
+    * If this method fails then search the `LOVD <http://www.lovd.nl/3.0/home>`_ database.
+    * If all the aforementioned methods fail then return ``None``
 
-If all the aforementioned methods fail then: 
-
-* Download the FASTA sequence of the trascript of the variant from `NCBI database <http://www.ncbi.nlm.nih.gov/nuccore>`_.
-* If the position of the variant is in coding (c.) coordinates then convert to genomic (g.) coordinates. To do that, we use the `Coordinate mapper <https://github.com/lennax/biopython/tree/f_loc5/Bio/SeqUtils/Mapper>`_ addition of biopython.
-* Perform a `blat search <https://genome.ucsc.edu/cgi-bin/hgBlat?command=start>`_) from UCSC. This methods performs an alignment search of the fasta sequence in the reference assembly. In case this succeeds then report the location of the variant in the reference genome. 
 
 
 Installation 
