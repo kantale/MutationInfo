@@ -777,11 +777,52 @@ Default: Same as the ``genome`` parameter.
 
 	def get_info(self, variant, **kwargs):
 		"""
-		Doing our best to get the most out of a variant name
+		Gets the chromosome, position, reference and alternative of a `dbsnp <http://www.ncbi.nlm.nih.gov/SNP/>`_ or `HGVS <http://varnomen.hgvs.org/>`_ variant. \
+		If the ``method`` parameter is not specified, by default it will go through the following pipeline:
 
+		.. image:: http://i.imgur.com/BAak2rE.png
 
+		:param variant: A variant (in str or unicode) or list of variants. \
+		Both rs (i.e. ``rs56404215``) or HGVS (i.e. ``NM_006446.4:c.1198T>G``) are accepted.  
 
-		:param variant: A variant or list of variants
+		Optional arguments:
+
+		:param method: Instead of the default pipeline, use a specific tool. Accepted values are:
+
+		- ``UCSC`` : Use `CruzDB <https://github.com/brentp/cruzdb>`_ (only for dbsnp variants)
+		- ``VEP`` : Use `Variant Effect Predictor <http://www.ensembl.org/info/docs/tools/vep/index.html>`_ (only for dbsnp variants)  
+		- ``MYVARIANTINFO`` : Use `MyVariant.info <http://myvariant.info/>`_ (only for dbsnp variants)
+		- ``BIOCOMMONS`` : Use `Biocommons HGVS <https://bitbucket.org/biocommons/hgvs>`_ (only for HGVS variants)
+		- ``COUNSYL`` : Use `Counsyl HGVS <https://github.com/counsyl/hgvs>`_ (only for HGVS variants)
+		- ``MUTALYZER`` : Use `Mutaluzer <https://mutalyzer.nl/>`_ (only for HGVS variants)
+		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
+		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
+
+		:return: If the pipeline or the selected method fails then the return value is ``None``. \
+		Otherwise it returns a dictionary with the following keys:
+
+		- ``chrom`` : The chromosome where this variant is located. \
+		The type of this value is *str* in order to have a universal type for all possible chromosome values (including X and Y).
+		- ``offset`` : The nucleotide position of the variant. 
+		- ``ref`` : The reference sequence of the variant. In case of insertions this value is an empty string.
+		- ``alt`` : The alternative sequence of the variant. In case of deletions this value is an empty string.
+		- ``genome`` : The version of the human genome assembly for this position.
+		- ``source`` : The name of the tool that was used to locate the position.
+		- ``notes`` : Possible warnings, errors and notes that the tools generated during the conversion.
+
+		An example of output is the following:
+
+		.. code-block:: python
+
+			from MutationInfo import MutationInfo as MI
+			mi = MI()
+
+			i = mi.get_info('NM_000367.2:c.-178C>T')
+			print i
+
+			{'chrom': '6', 'notes': '', 'source': 'counsyl_hgvs_to_vcf', 
+			'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'}
+
 
 		"""
 
@@ -961,7 +1002,6 @@ Default: Same as the ``genome`` parameter.
 		logging.warning('Variant: %s Mutalyzer failed..' % (str(variant)))
 
 		logging.info('Variant: %s . Trying BLAT search..' % (str(variant)))
-		print kwargs
 		ret = self.get_info_BLAT(variant=variant, hgvs_transcript=hgvs_transcript, hgvs_type=hgvs_type, hgvs_position=hgvs_position, hgvs_reference=hgvs_reference, hgvs_alternative=hgvs_alternative, **kwargs)
 		if ret and len(ret) > 2:
 			return ret
