@@ -118,7 +118,7 @@ except ImportError as e:
             print command
             print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
 
-      raise e
+      #raise e
 
 
 try:
