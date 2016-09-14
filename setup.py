@@ -128,5 +128,6 @@ except ImportError as e:
             print str(e)
             print 'This is a known issue.'
             print 'Please refer to https://github.com/kantale/MutationInfo/issues/9 in order to resolve it'
-      raise e
+      print 'WARNING: hgvs could not been imported:'
+      print str(e)
 
