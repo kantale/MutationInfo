@@ -402,7 +402,7 @@ Default: Same as the ``genome`` parameter.
 
 		r = requests.get(url)
 		t = r.text
-		logging.debug('Variant: %s . Recieved from MyVariant.info:')
+		logging.debug('Variant: %s . Recieved from MyVariant.info:' % (variant))
 		logging.debug(t)
 		result = json.loads(t)
 
@@ -413,14 +413,23 @@ Default: Same as the ``genome`` parameter.
 					logging.debug('MYVARIANT INFO for variant %s returned: %s' % (variant, _id))
 					hgvs = MutationInfo.biocommons_parse(_id)
 					hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative = self.get_elements_from_hgvs(hgvs)
-					ret = self._build_ret_dict(hgvs_transcript, hgvs_position, hgvs_reference, hgvs_alternative, 'hg19', 'MyVariantInfo') # http://myvariant.info/faq/ By default, MyVariant.info supports hg19-based HGVS ids as the "_id" field for each variant object. 
+					ret = self._build_ret_dict(hgvs_transcript, hgvs_position, hgvs_reference, hgvs_alternative, 'hg19', 'MyVariantInfo', ' , '.join(self.current_fatal_error)) # http://myvariant.info/faq/ By default, MyVariant.info supports hg19-based HGVS ids as the "_id" field for each variant object. 
 					return ret
 				else:
-					return {'notes': 'No _id entry in hits'}
+					message = 'MyVariant Info returned No _id entry in hits'
+					logging.warning(message)
+					self.current_fatal_error.append(message)
+					return None
 			else:
-				return {'notes': 'Returned empty hits'}
+				message = 'MyVariantInfo Returned empty hits'
+				logging.warning(message)
+				self.current_fatal_error.append(message)
+				return None
 		else:
-			return {'notes': 'No hits'}
+			message = 'MyVariantInfo return No hits'
+			logging.warning(message)
+			self.current_fatal_error.append(message)
+			return None
 
 
 	def get_info_biocommons(self, variant):
@@ -870,7 +879,7 @@ Default: Same as the ``genome`` parameter.
 			# Variant Effect Predictor
 			logging.info('Variant: %s . Trying VEP..' % (variant))
 			ret = self.get_info_vep(variant, **kwargs)
-			if ret:
+			if ret and 'chrom' in ret: # The fact that ret is not null does not mean that it has the info that we want!
 				return ret
 			else:
 				logging.warning('Variant: %s . VEP Failed' % (variant))
@@ -887,10 +896,10 @@ Default: Same as the ``genome`` parameter.
 			logging.info('Variant: %s . Trying CruzDB (UCSC)..' % (variant))
 			ret = self._get_info_rs(variant)
 			if not ret:
-				logging.warning('Variant: %s CruzDB (UCSC) failed..')
+				logging.warning('Variant: %s CruzDB (UCSC) failed..'% (variant))
 				return ret
 			elif ret['alt'] == 'lengthTooLong':
-				logging.warning('Variant: %s . CruzDB (UCSC) Returned "lengthTooLong". Trying Variant Effect Predictor (VEP)' % (variant))
+				logging.warning('Variant: %s . CruzDB (UCSC) Returned "lengthTooLong"' % (variant))
 				return ret
 
 			return ret
@@ -1913,6 +1922,12 @@ Default: Same as the ``genome`` parameter.
 
 		results = list(self.ucsc_dbsnp.filter_by(name=variant))
 		logging.info('Variant: %s . Returned from UCSC filter_by: %s' % (str(variant), str(results)))
+
+		if not results:
+			message = 'UCSC returned an empty result list'
+			logging.warning(message)
+			self.current_fatal_error.append(message)
+			return None
 
 		ret = []
 

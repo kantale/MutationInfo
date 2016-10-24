@@ -10,6 +10,8 @@ mi = MutationInfo()
 
 class TestMutationInfo(unittest.TestCase):
 
+    maxDiff = None
+
     def test_FYZZY_HGVS_CORRECTOR(self):
         print '------FUZZY HGVS CORRECTOR---------'
         ret = MutationInfo.fuzzy_hgvs_corrector('1048G->C')
@@ -112,7 +114,8 @@ class TestMutationInfo(unittest.TestCase):
 
         info = mi.get_info('M61857.1:c.121A>G') # No exons in genbank file
         print info
-        self.assertEqual(info,  {'chrom': '10', 'notes': u'Variant: M61857.1:c.121A>G . biocommons method splign method failed: No alignments for M61857.1 in GRCh37 using splign / Variant: M61857.1:c.121A>G . biocommons method blat method failed: No alignments for M61857.1 in GRCh37 using blat / Variant: M61857.1:c.121A>G . biocommons method genewise method failed: No alignments for M61857.1 in GRCh37 using genewise / MUTALYZER POSITION CONVERTER REPORTED ERROR: The accession number M61857 could not be found in our database (or is not a transcript). / MUTALYZER POSITION CONVERTER REPORTED ERROR: The accession number M61857 could not be found in our database (or is not a transcript). / Variant: M61857.1:c.121A>G . MUTALYZER CRASHED? : HTTP Error 500: INTERNAL SERVER ERROR', 'source': 'BLAT', 'genome': 'hg19', 'offset': 96698560, 'alt': 'G', 'ref': 'A'})
+        info_to_check = {k:v for k,v in info.iteritems() if k != 'notes'}
+        self.assertEqual(info_to_check,  {'chrom': '10', 'source': 'BLAT', 'genome': 'hg19', 'offset': 96698560, 'alt': 'G', 'ref': 'A'})
 
         info = mi.get_info('J02843.1:c.-1295G>C') # Test biopython c2g
         print info
@@ -189,10 +192,13 @@ class TestMutationInfo(unittest.TestCase):
         print info
         self.assertEqual(info,  {'chrom': '19', 'notes': u'MUTALYZER POSITION CONVERTER REPORTED ERROR: The Accession number NG_008377 could not be found in our database (or is not a chromosome). / MUTALYZER POSITION CONVERTER REPORTED ERROR: The Accession number NG_008377 could not be found in our database (or is not a chromosome). / Mutalyzer did c_g conversion, INFO BY BLAT', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 41354851, 'alt': '', 'ref': 'GAGAGA'})
 
+        info = mi.get_info('rs113940699') # Fails VEP, succeeds on MyVariantInfo
+        print info
+        self.assertEqual(info, {'chrom': '22', 'notes': 'Variant: rs113940699 . VEP returned an empty list', 'source': 'MyVariantInfo', 'genome': 'hg19', 'offset': 42522748, 'alt': u'T', 'ref': u'C'})
 
+        info = mi.get_info('rs72549356') # Fails all three! 
+        print info
+        self.assertIsNone(info)
 
 if __name__ == '__main__':
     unittest.main()
-
-
-
