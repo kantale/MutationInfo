@@ -604,6 +604,10 @@ Default: Same as the ``genome`` parameter.
 		print 'LOVD ???? 4498'
 		return None
 
+	def get_info_VARIATION_REPORTER(self, variant):
+		return self._search_variation_reporter(variant)
+
+
 	def get_info_BLAT(self, variant=None, hgvs_transcript=None, hgvs_type=None, hgvs_position=None, hgvs_reference=None, hgvs_alternative=None, **kwargs):
 		#Parse with biocommons
 
@@ -832,8 +836,6 @@ Default: Same as the ``genome`` parameter.
 
 		"""
 
-		self.current_fatal_error = []
-
 		#Check if a preferred info is in parameters:
 		if 'method' in kwargs:
 			if kwargs['method'] == 'UCSC':
@@ -852,6 +854,8 @@ Default: Same as the ``genome`` parameter.
 				return self.get_info_LOVD(variant)
 			elif kwargs['method'] == 'BLAT':
 				return self.get_info_BLAT(variant=variant)
+			elif kwargs['method'] == 'VARIATION_REPORTER':
+				return self.get_info_VARIATION_REPORTER(variant)
 			else:
 				raise MutationInfoException('Unknown method: %s ' % (str(kwargs['method'])))
 
@@ -983,7 +987,7 @@ Default: Same as the ``genome`` parameter.
 			if search is None:
 				logging.error('Variant: %s . Although this variant is a reference assembly, could not locate the chromosome and assembly name in the NCBI entry' % (variant))
 				return None
-			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'NC_transcript')
+			ret = self._build_ret_dict(search.group(1), hgvs_position, hgvs_reference, hgvs_alternative, search.group(2), 'NC_transcript', ' / '.join(self.current_fatal_error))
 			return ret
 
 		logging.info('Biocommons Failed')
@@ -2046,7 +2050,113 @@ Default: Same as the ``genome`` parameter.
 
 		return self._build_ret_dict(*arguments)
 
+	def _search_variation_reporter(self, variant):
+		'''
+		https://www.ncbi.nlm.nih.gov/variation/tools/reporter/docs/api/webservice
+
+		source-assembly - The accession and version of the reference assembly (e.g. the accession and version for human GRCh38.2 
+		is GCF_000001405.28). Visit the Variation Reporter web service to see available supported assemblies and the Assembly 
+		database for the corresponding assembly accession and version numbers.  When not provided, the value defaults to GCF_000001405.25 (GRCh37.p13).
+
+		# Example requests.post("https://www.ncbi.nlm.nih.gov/projects/SNP/VariantAnalyzer/var_rep.cgi", data={"annot1":"NM_017781.2:c.166C>T", "api_protocol_version":"1.0"}) 
+
+		https://www.ncbi.nlm.nih.gov/variation/tools/reporter/docs/help
+		'''
+
+		url = 'https://www.ncbi.nlm.nih.gov/projects/SNP/VariantAnalyzer/var_rep.cgi'
+		data = {
+			'annot1': variant,
+			'api_protocol_version': '1.0',
+		}
+
+		try:
+			r = requests.post(url, data=data)
+		except Exception as e:
+			message = 'Variation Reporter. Variant: %s Could not access www.ncbi.nlm.nih.gov. Exception: %s' % (str(variant), str(exception))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		if not hasattr(r, 'text'):
+			message = 'Variation Reporter. Variant: %s POST request on %s Failed' % (str(variant), url)
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		text = r.text
+		assert type(text) is unicode
+
+		logging.debug('Variant: %s . Variation Reporter returned:' % (str(variant)))
+		logging.debug(text)
+
+		if "Failed" in text:
+			message = 'Variation Reporter. Variant: %s . Returned:\n%s\n' % (str(variant), text)
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		# Get the assembly
+		# ## Assembly:	GRCh37.p13
+		s = re.search(r'Assembly:[\s]+([\w\.]+)', text)
+		if not s:
+			message = 'Variation Reporter. Variant: %s. Could not find assembly' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		assembly = s.group(1)
+
+		# Get headers
+		s = re.search(r"^\# (.+)$", text, re.MULTILINE)
+		if not s:
+			message = 'Variation Reporter. Variant: %s. Could not find header' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		headers = s.group(1).split('\t')
+
+		if not 'Hgvs_g' in headers:
+			message = 'Variation Reporter. Variant: %s. Could not find field "Hgvs_g" in header' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		Hgvs_g_index = headers.index('Hgvs_g')
+
+		all_records = [x.split('\t') for x in text.split('\n') if (len(x) > 10) and (not 'Submitted:' in x) and (x[0] != '#')]
+		all_hgvs_g = [x[Hgvs_g_index] for x in all_records]
+
+		# Check if g. is indeed present
+		all_hgvs_g = [x for x in all_hgvs_g if 'g.' in x]
+		if not (len(all_hgvs_g)):
+			message = 'Variation Reporter. Variant: %s. Could not convert to genomic coordinates' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return None
+
+		# Parse the remaining with biocommons
+		all_hgvs_g_report = all_hgvs_g
+		all_hgvs_g = [y for y in [MutationInfo.biocommons_parse(x) for x in all_hgvs_g] if y]
+		if not len(all_hgvs_g):
+			message = 'Variation Reporter. Variant: %s. Could not parse any of the hgvs_g variants: %s with biocommons' % (str(variant), str(all_hgvs_g_report))
+
+		# Count
+		all_hgvs_g_count = {} 
+		for current_hgvs in all_hgvs_g:
+			all_hgvs_g_count[str(current_hgvs)] = all_hgvs_g_count.get(str(current_hgvs), 0) + 1
+
+		# Take the most common:
+		most_common_hgvs = max([(v, k) for k, v in all_hgvs_g_count.iteritems()])[1]
+		logging.debug('Variation Reporter. Variant: %s . Returning value for: %s' % (str(variant), most_common_hgvs))
+
+		self.current_fatal_error.append('Variation Reporter did c. to g conversion')
+		return self.get_info(most_common_hgvs)
+
 	def _build_ret_dict(self, *args):
+
+		self.current_fatal_error = []
+
 		return {
 			'chrom' : str(args[0]).lower().replace('chr', ''),
 			'offset' : args[1],

@@ -71,6 +71,20 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertEqual(ret, (u'6', 18155397, None, u'hg19'))
 
+    def test_VARIATION_REPORTER(self):
+        print '--------VARIATION REPORTER------------------------'
+        ret = mi.get_info('NM_099999999.2:c.166C>T', method='VARIATION_REPORTER')
+        print ret
+        self.assertIsNone(ret)
+
+        ret = mi.get_info('NM_099999.2:c.166C>T', method='VARIATION_REPORTER')
+        print ret
+        self.assertIsNone(ret)
+
+        ret = mi.get_info('NM_017781.2:c.166C>T', method='VARIATION_REPORTER')
+        print ret
+        self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter did c. to g conversion', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
+
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'
 
@@ -145,6 +159,7 @@ class TestMutationInfo(unittest.TestCase):
         print info
         self.assertEqual(info,  {'chrom': '2', 'notes': u'MUTALYZER POSITION CONVERTER REPORTED ERROR: The Accession number NT_005120 could not be found in our database (or is not a chromosome). / MUTALYZER POSITION CONVERTER REPORTED ERROR: The Accession number NT_005120 could not be found in our database (or is not a chromosome). / Mutalyzer did c_g conversion, INFO BY BLAT', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 234675608, 'alt': 'G', 'ref': 'T'})
 
+
     def test_GET_INFO_RS(self):
         print '--------GET INFO RS--------------------'
         # Testing rs SNPs
@@ -201,4 +216,10 @@ class TestMutationInfo(unittest.TestCase):
         self.assertIsNone(info)
 
 if __name__ == '__main__':
+    '''
+    Run: 
+        * python test.py , to run all tests
+        * python test.py TestMutationInfo.test_VARIATION_REPORTER , to run a specific test: http://stackoverflow.com/questions/15971735/running-single-test-from-unittest-testcase-via-command-line
+    '''
+
     unittest.main()
