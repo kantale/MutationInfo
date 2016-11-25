@@ -85,6 +85,12 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter did c. to g conversion', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
 
+    def test_TRANSVAR(self):
+        print '--------TRANSVAR------------------------'
+        ret = mi.get_info('NM_017781.2:c.166C>T', method='TRANSVAR')
+        print ret
+        self.assertEqual(ret, {'chrom': '7', 'notes': 'Transvar conerted NM_017781.2:c.166C>T to chr7:g.1023013C>T', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
+
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'
 
@@ -220,6 +226,7 @@ if __name__ == '__main__':
     Run: 
         * python test.py , to run all tests
         * python test.py TestMutationInfo.test_VARIATION_REPORTER , to run a specific test: http://stackoverflow.com/questions/15971735/running-single-test-from-unittest-testcase-via-command-line
+        * python test.py TestMutationInfo.test_TRANSVAR
     '''
 
     unittest.main()

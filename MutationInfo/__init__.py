@@ -14,6 +14,9 @@ import tarfile
 import urllib2
 import requests
 import feedparser # For LOVD atom data 
+import subprocess # For transvar 
+
+from distutils.spawn import find_executable # https://docs.python.org/release/2.4/dist/module-distutils.spawn.html 
 
 from Bio import Entrez, SeqIO
 from appdirs import *
@@ -607,6 +610,8 @@ Default: Same as the ``genome`` parameter.
 	def get_info_VARIATION_REPORTER(self, variant):
 		return self._search_variation_reporter(variant)
 
+	def get_info_TRANSVAR(self, variant):
+		return self._search_transvar(variant)
 
 	def get_info_BLAT(self, variant=None, hgvs_transcript=None, hgvs_type=None, hgvs_position=None, hgvs_reference=None, hgvs_alternative=None, **kwargs):
 		#Parse with biocommons
@@ -811,6 +816,7 @@ Default: Same as the ``genome`` parameter.
 		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
 		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
 		- ``VARIATION_REPORTER`` Search `Variation Reported <https://www.ncbi.nlm.nih.gov/variation/tools/reporter/>`_ 
+		- ``TRANSVAR`` Search `Transvar <http://bioinformatics.mdanderson.org/main/Transvar>`_
 
 		:return: If the pipeline or the selected method fails then the return value is ``None``. \
 		Otherwise it returns a dictionary with the following keys:
@@ -860,6 +866,8 @@ Default: Same as the ``genome`` parameter.
 				return self.get_info_BLAT(variant=variant)
 			elif kwargs['method'] == 'VARIATION_REPORTER':
 				return self.get_info_VARIATION_REPORTER(variant)
+			elif kwargs['method'] == 'TRANSVAR':
+				return self.get_info_TRANSVAR(variant)
 			else:
 				raise MutationInfoException('Unknown method: %s ' % (str(kwargs['method'])))
 
@@ -999,7 +1007,7 @@ Default: Same as the ``genome`` parameter.
 		logging.info('Variant: %s Converting to VCF with pyhgvs..' % (variant)) 
 		try:
 			chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-			return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf')
+			return self._build_ret_dict(chrom, offset, ref, alt, self.genome, 'counsyl_hgvs_to_vcf', ' / '.join(self.current_fatal_error))
 		except KeyError as e:
 			logging.warning('Variant: %s . pyhgvs KeyError: %s' % (variant, str(e)))
 		except ValueError as e:
@@ -2156,6 +2164,81 @@ Default: Same as the ``genome`` parameter.
 
 		self.current_fatal_error.append('Variation Reporter did c. to g conversion')
 		return self.get_info(most_common_hgvs, empty_current_fatal_error=False)
+
+	def _search_transvar(self, variant):
+		'''
+		Experimental !!!
+		NM_017781.2:c.166C>T	NM_017781 (protein_coding)	CYP2W1	+	chr7:g.1023013C>T/c.166C>T/p.L56L	cds_in_exon_1	synonymous;reference_codon=CTG;alternative_codon=TTG;source=UCSCRefGene
+		NM_017781.2:c.166C>T	NM_017781 (protein_coding)	CYP2W1	+	chr7:g.1023013C>T/c.166C>T/p.L56L	cds_in_exon_1	synonymous;reference_codon=CTG;alternative_codon=TTG;dbxref=GeneID:54905,HGNC:20243;aliases=NP_060251;source=RefSeq
+		'''
+		transvar_exec = find_executable('transvar')
+
+		if not transvar_exec:
+			message = 'Transvar . Variant: %s . Could not find transvar in the system. Is it installeD?' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error(message)
+			return None
+
+		if "c." in variant:
+			t_anno = "canno"
+		elif "g." in variant:
+			t_anno = "ganno"
+		elif "p." in variant:
+			t_anno = "panno"
+		else:
+			message = 'Transvar . Variant: %s . Variant does not have a "c." , "g." or "p." part' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error(message)
+			return None
+
+		
+		command = "transvar %s -i %s  --ccds  --ucsc --ensembl --refseq --aceview --gencode" % (t_anno, variant)
+		print command
+		p = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		out, err = p.communicate()
+
+		if len(err):
+			logging.warning('Variant: %s . Transvar returned this error message: %s' % (str(variant), err))
+
+		logging.debug('Transvar returned:\n%s\n' % (out))
+
+		out_raw = [x for x in out.split('\n') if not "coordinates(gDNA/cDNA/protein)" in x and len(x)>10]
+		
+		if not len(out_raw):
+			message = 'Variant: %s . Transvar did not return any output' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.appen(message)
+			return None
+
+		out_raw = [x.split() for x in out_raw]
+
+		hgvs_dict = {}
+		for item in out_raw:
+			if len(item) < 6:
+				 continue
+
+			hgvs_item = item[5]
+			if not '/c.' in hgvs_item:
+				continue
+
+			hgvs_item_index = hgvs_item.index('/c.')
+			hgvs_item = hgvs_item[:hgvs_item_index]
+
+			hgvs_dict[hgvs_item] = hgvs_dict.get(hgvs_item, 0) + 1
+
+		if len(hgvs_dict) == 0:
+			message = 'Variant: %s . Transvar did not convert to g. ' % (str(variant))
+			logging.error(message)
+			self.current_fatal_error.append(message)
+			return 0
+
+		to_ret = max([(v, k) for k, v in hgvs_dict.iteritems()])[1]
+		message = 'Transvar conerted %s to %s' % (str(variant), to_ret)
+		logging.debug(message)
+		self.current_fatal_error.append(message)
+
+		return self.get_info(to_ret, empty_current_fatal_error=False)
+
 
 	def _build_ret_dict(self, *args):
 
