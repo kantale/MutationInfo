@@ -83,13 +83,22 @@ class TestMutationInfo(unittest.TestCase):
 
         ret = mi.get_info('NM_017781.2:c.166C>T', method='VARIATION_REPORTER')
         print ret
-        self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter did c. to g conversion', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
+        self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter converted NM_017781.2:c.166C>T to NC_000007.13:g.1023013C>T', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
 
     def test_TRANSVAR(self):
         print '--------TRANSVAR------------------------'
+
+        ret = mi.get_info('NM_999999999999.2:c.166C>T', method='TRANSVAR')
+        print ret
+        self.assertIsNone(ret)
+
+        ret = mi.get_info('abc', method='TRANSVAR')
+        print ret
+        self.assertIsNone(ret)
+
         ret = mi.get_info('NM_017781.2:c.166C>T', method='TRANSVAR')
         print ret
-        self.assertEqual(ret, {'chrom': '7', 'notes': 'Transvar conerted NM_017781.2:c.166C>T to chr7:g.1023013C>T', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
+        self.assertEqual(ret, {'chrom': '7', 'notes': 'Transvar conerted NM_017781.2:c.166C>T to chr7:g.1023013C>T', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})   
 
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'

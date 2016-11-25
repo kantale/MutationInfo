@@ -186,7 +186,7 @@ Default: Same as the ``genome`` parameter.
 	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp146', **kwargs):
 	#def __init__(self, local_directory=None, email=None, genome='hg38', dbsnp_version='snp146'):
 		'''
-		Current dbSNP version be default is 142 : 
+		Current dbSNP version by default is 142 : 
 			#http://genome.ucsc.edu/goldenPath/newsarch.html
 			#11 February 2015 - dbSNP 142 Available for hg19 and hg38
 
@@ -816,7 +816,7 @@ Default: Same as the ``genome`` parameter.
 		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
 		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
 		- ``VARIATION_REPORTER`` Search `Variation Reported <https://www.ncbi.nlm.nih.gov/variation/tools/reporter/>`_ 
-		- ``TRANSVAR`` Search `Transvar <http://bioinformatics.mdanderson.org/main/Transvar>`_
+		- ``TRANSVAR`` Search `Transvar <http://bioinformatics.mdanderson.org/main/Transvar>`_ (Experimental)
 
 		:return: If the pipeline or the selected method fails then the return value is ``None``. \
 		Otherwise it returns a dictionary with the following keys:
@@ -2162,7 +2162,7 @@ Default: Same as the ``genome`` parameter.
 		most_common_hgvs = max([(v, k) for k, v in all_hgvs_g_count.iteritems()])[1]
 		logging.debug('Variation Reporter. Variant: %s . Returning value for: %s' % (str(variant), most_common_hgvs))
 
-		self.current_fatal_error.append('Variation Reporter did c. to g conversion')
+		self.current_fatal_error.append('Variation Reporter converted %s to %s' % (str(variant), most_common_hgvs))
 		return self.get_info(most_common_hgvs, empty_current_fatal_error=False)
 
 	def _search_transvar(self, variant):
@@ -2176,7 +2176,7 @@ Default: Same as the ``genome`` parameter.
 		if not transvar_exec:
 			message = 'Transvar . Variant: %s . Could not find transvar in the system. Is it installeD?' % (str(variant))
 			logging.error(message)
-			self.current_fatal_error(message)
+			self.current_fatal_error.append(message)
 			return None
 
 		if "c." in variant:
@@ -2188,7 +2188,7 @@ Default: Same as the ``genome`` parameter.
 		else:
 			message = 'Transvar . Variant: %s . Variant does not have a "c." , "g." or "p." part' % (str(variant))
 			logging.error(message)
-			self.current_fatal_error(message)
+			self.current_fatal_error.append(message)
 			return None
 
 		
@@ -2207,7 +2207,7 @@ Default: Same as the ``genome`` parameter.
 		if not len(out_raw):
 			message = 'Variant: %s . Transvar did not return any output' % (str(variant))
 			logging.error(message)
-			self.current_fatal_error.appen(message)
+			self.current_fatal_error.append(message)
 			return None
 
 		out_raw = [x.split() for x in out_raw]
@@ -2237,8 +2237,8 @@ Default: Same as the ``genome`` parameter.
 		logging.debug(message)
 		self.current_fatal_error.append(message)
 
-		return self.get_info(to_ret, empty_current_fatal_error=False)
-
+		chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
+		return self._build_ret_dict(chrom, offset, ref, alt,'hg19', 'counsyl_hgvs_to_vcf', ' / '.join(self.current_fatal_error))
 
 	def _build_ret_dict(self, *args):
 
