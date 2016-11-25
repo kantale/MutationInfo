@@ -788,7 +788,7 @@ Default: Same as the ``genome`` parameter.
 
 		return hgvs_transcript, hgvs_type, hgvs_position, hgvs_reference, hgvs_alternative
 
-	def get_info(self, variant, **kwargs):
+	def get_info(self, variant, empty_current_fatal_error=True, **kwargs):
 		"""
 		Gets the chromosome, position, reference and alternative of a `dbsnp <http://www.ncbi.nlm.nih.gov/SNP/>`_ or `HGVS <http://varnomen.hgvs.org/>`_ variant. \
 		If the ``method`` parameter is not specified, by default it will go through the following pipeline:
@@ -810,6 +810,7 @@ Default: Same as the ``genome`` parameter.
 		- ``MUTALYZER`` : Use `Mutalyzer <https://mutalyzer.nl/>`_ (only for HGVS variants)
 		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
 		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
+		- ``VARIATION_REPORTER`` Search `Variation Reported <https://www.ncbi.nlm.nih.gov/variation/tools/reporter/>`_ 
 
 		:return: If the pipeline or the selected method fails then the return value is ``None``. \
 		Otherwise it returns a dictionary with the following keys:
@@ -835,6 +836,9 @@ Default: Same as the ``genome`` parameter.
 
 
 		"""
+
+		if empty_current_fatal_error:
+			self.current_fatal_error = []
 
 		#Check if a preferred info is in parameters:
 		if 'method' in kwargs:
@@ -2151,11 +2155,9 @@ Default: Same as the ``genome`` parameter.
 		logging.debug('Variation Reporter. Variant: %s . Returning value for: %s' % (str(variant), most_common_hgvs))
 
 		self.current_fatal_error.append('Variation Reporter did c. to g conversion')
-		return self.get_info(most_common_hgvs)
+		return self.get_info(most_common_hgvs, empty_current_fatal_error=False)
 
 	def _build_ret_dict(self, *args):
-
-		self.current_fatal_error = []
 
 		return {
 			'chrom' : str(args[0]).lower().replace('chr', ''),
