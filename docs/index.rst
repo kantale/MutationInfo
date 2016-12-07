@@ -10,7 +10,7 @@ MutationInfo is a python package to extract the position, the reference and the 
 It accepts variants in `dbSNP <http://www.ncbi.nlm.nih.gov/SNP/>`_ rs format or in `HGVS <http://www.hgvs.org/mutnomen/>`_ format.
 
 Source: https://github.com/kantale/MutationInfo/ 
-License: 
+License: MIT License 
 
 
 Contents:

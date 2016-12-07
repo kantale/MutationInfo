@@ -98,7 +98,7 @@ except ImportError:
 
 
 __docformat__ = 'reStructuredText'
-__version__ = '1.1.0'
+__version__ = '1.3.0'
 
 """
 TODO: 
@@ -816,7 +816,7 @@ Default: Same as the ``genome`` parameter.
 		- ``BLAT`` : Perform a BLAT search (only for HGVS variants)
 		- ``LOVD`` Search `LOVD <http://databases.lovd.nl/shared/genes>`_ database (only for HGVS variants)
 		- ``VARIATION_REPORTER`` Search `Variation Reported <https://www.ncbi.nlm.nih.gov/variation/tools/reporter/>`_ 
-		- ``TRANSVAR`` Search `Transvar <http://bioinformatics.mdanderson.org/main/Transvar>`_ (Experimental)
+		- ``TRANSVAR`` Search `Transvar <http://bioinformatics.mdanderson.org/main/Transvar>`_ (Experimental, requires installation of TRANSVAR CLI)
 
 		:return: If the pipeline or the selected method fails then the return value is ``None``. \
 		Otherwise it returns a dictionary with the following keys:
@@ -2168,6 +2168,12 @@ Default: Same as the ``genome`` parameter.
 	def _search_transvar(self, variant):
 		'''
 		Experimental !!!
+
+		Resources: 
+		    * http://www.transvar.info/transvar_user/annotations/ 
+		    * http://seqanswers.com/forums/showthread.php?t=32557 samtools 
+		    * https://bitbucket.org/wanding/transvar 
+		TODO: By default returns genome reference = hg19
 		NM_017781.2:c.166C>T	NM_017781 (protein_coding)	CYP2W1	+	chr7:g.1023013C>T/c.166C>T/p.L56L	cds_in_exon_1	synonymous;reference_codon=CTG;alternative_codon=TTG;source=UCSCRefGene
 		NM_017781.2:c.166C>T	NM_017781 (protein_coding)	CYP2W1	+	chr7:g.1023013C>T/c.166C>T/p.L56L	cds_in_exon_1	synonymous;reference_codon=CTG;alternative_codon=TTG;dbxref=GeneID:54905,HGNC:20243;aliases=NP_060251;source=RefSeq
 		'''
