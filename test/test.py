@@ -8,6 +8,30 @@ from MutationInfo import MutationInfo
 
 mi = MutationInfo()
 
+def remove_notes(r):
+    return {k:v for k,v in r.iteritems() if k != 'notes'}
+
+def which(program):
+    '''
+    Blatantly copied from http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python 
+    '''
+    import os
+    def is_exe(fpath):
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if is_exe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            path = path.strip('"')
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+
+    return None
+
 class TestMutationInfo(unittest.TestCase):
 
     maxDiff = None
@@ -85,6 +109,7 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter converted NM_017781.2:c.166C>T to NC_000007.13:g.1023013C>T', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
 
+    @unittest.skipIf(not which('transvar'), "transvar is not installed. Skipping..")
     def test_TRANSVAR(self):
         print '--------TRANSVAR------------------------'
 
@@ -168,7 +193,7 @@ class TestMutationInfo(unittest.TestCase):
 
         info = mi.get_info('NM_000367.2:c.-178C>T')
         print info
-        self.assertEqual(info,  {'chrom': '6', 'notes': '', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'})
+        self.assertEqual(remove_notes(info),  {'chrom': '6', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 18155397, 'alt': 'A', 'ref': 'G'})
 
         info = mi.get_info('NT_005120.15:c.IVS1-72T>G', gene='UGT1A1')
         print info

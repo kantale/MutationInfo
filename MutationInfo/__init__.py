@@ -2046,8 +2046,9 @@ Default: Same as the ``genome`` parameter.
 
 		#In case of a deletion we need to make this correction in order to report the same position as in HGVS
 		#For example: rs113993960 
-		if variant_alleles == '':
+		if variant_alleles in [u'', u'-']:
 			offset = v[0]['start']
+			variant_alleles = u'';
 		else:
 			offset = v[0]['end']
 
