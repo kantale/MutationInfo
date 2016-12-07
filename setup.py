@@ -68,7 +68,7 @@ if pg_v:
 
 
 setup(name='MutationInfo',
-      version='1.1.0',
+      version='1.3.0',
       description='Tool to retrieve meta-information of genetic variants',
       url='https://github.com/kantale/MutationInfo',
       author='Alexandros Kanterakis',
