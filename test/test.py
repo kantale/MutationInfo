@@ -113,20 +113,21 @@ class TestMutationInfo(unittest.TestCase):
     def test_TRANSVAR(self):
         print '--------TRANSVAR------------------------'
 
-#        ret = mi.get_info('NM_999999999999.2:c.166C>T', method='TRANSVAR')
-#        print ret
-#        self.assertIsNone(ret)
+        ret = mi.get_info('NM_999999999999.2:c.166C>T', method='TRANSVAR')
+        print ret
+        self.assertIsNone(ret)
 
-#        ret = mi.get_info('abc', method='TRANSVAR')
-#        print ret
-#        self.assertIsNone(ret)
+        ret = mi.get_info('abc', method='TRANSVAR')
+        print ret
+        self.assertIsNone(ret)
 
-#        ret = mi.get_info('NM_017781.2:c.166C>T', method='TRANSVAR')
-#        print ret
-#        self.assertEqual(ret, {'chrom': '7', 'notes': 'Transvar conerted NM_017781.2:c.166C>T to chr7:g.1023013C>T', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})   
+        ret = mi.get_info('NM_017781.2:c.166C>T', method='TRANSVAR')
+        print ret
+        self.assertEqual(ret, {'chrom': '7', 'notes': 'Transvar conerted NM_017781.2:c.166C>T to chr7:g.1023013C>T', 'source': 'counsyl_hgvs_to_vcf', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})   
 
         ret = mi.get_info('NG_008421.1:g.22928_22929delAT', method='TRANSVAR')
         print ret
+        self.assertIsNone(ret)
 
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'
