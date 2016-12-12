@@ -2237,7 +2237,7 @@ Default: Same as the ``genome`` parameter.
 			message = 'Variant: %s . Transvar did not convert to g. ' % (str(variant))
 			logging.error(message)
 			self.current_fatal_error.append(message)
-			return 0
+			return None
 
 		to_ret = max([(v, k) for k, v in hgvs_dict.iteritems()])[1]
 		message = 'Transvar conerted %s to %s' % (str(variant), to_ret)
