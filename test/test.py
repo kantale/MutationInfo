@@ -107,7 +107,7 @@ class TestMutationInfo(unittest.TestCase):
 
         ret = mi.get_info('NM_017781.2:c.166C>T', method='VARIATION_REPORTER')
         print ret
-        self.assertEqual(ret, {'chrom': '7', 'notes': 'Variation Reporter converted NM_017781.2:c.166C>T to NC_000007.13:g.1023013C>T', 'source': 'NC_transcript', 'genome': 'GRCh37.p13', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
+        self.assertEqual(remove_notes(ret), {'chrom': '7', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 1023013, 'alt': 'T', 'ref': 'C'})
 
     @unittest.skipIf(not which('transvar'), "transvar is not installed. Skipping..")
     def test_TRANSVAR(self):

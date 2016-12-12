@@ -261,6 +261,20 @@ Default: Same as the ``genome`` parameter.
 		logging.info('Mutalyzer directory: %s' % (self.mutalyzer_directory))
 
 		# Set up cruzdb (UCSC)
+		self.ucsc_options = {}
+		if 'ucsc_genome' in kwargs:
+			self.ucsc_options['ucsc_genome'] = kwargs['ucsc_genome']
+
+		self._setup_UCSC(**self.ucsc_options)
+
+		#Save properties file
+		Utils.save_json_filenane(self._properties_file, self.properties)
+
+		#Stores what went wrong during a conversion 
+		self.current_fatal_error = []
+
+	def _setup_UCSC(self, **kwargs):
+		# Set up cruzdb (UCSC)
 		logging.info('Setting up UCSC access..')
 		try:
 			if 'ucsc_genome' in kwargs:
@@ -276,11 +290,6 @@ Default: Same as the ``genome`` parameter.
 				logging.error('Please refer to https://github.com/kantale/MutationInfo/issues/7 in order to resolve this issue')
 			raise e
 
-		#Save properties file
-		Utils.save_json_filenane(self._properties_file, self.properties)
-
-		#Stores what went wrong during a conversion 
-		self.current_fatal_error = []
 
 	def biocommons_connect(self,):
 		'''
@@ -1936,7 +1945,30 @@ Default: Same as the ``genome`` parameter.
 		Variant should be an rs variant
 		'''
 
-		results = list(self.ucsc_dbsnp.filter_by(name=variant))
+		# Trying three times to query UCSC..
+		ucsc_query_efforts = 0
+		ucsc_query_efforts_MAX = 3
+		while ucsc_query_efforts < ucsc_query_efforts_MAX:
+			ucsc_query_efforts += 1
+			success = False
+			try:
+				results = list(self.ucsc_dbsnp.filter_by(name=variant))
+				success = True
+			except Exception as e:
+				message = "Could not query UCSC. Error: {}".format(str(e))
+				logging.error(message)
+				message = "This was effort {} from {}".format(ucsc_query_efforts, ucsc_query_efforts_MAX)
+				logging.error(message)
+				if ucsc_query_effors < ucsc_query_efforts_MAX:
+					logging.info("Resetting UCSC connection...")
+					self._setup_UCSC(**self.ucsc_options)
+				else:
+					logging.error("Maximum UCSC connection efforts reached. Aborting..")
+					return None
+
+			if success:
+				break
+
 		logging.info('Variant: %s . Returned from UCSC filter_by: %s' % (str(variant), str(results)))
 
 		if not results:
@@ -2085,7 +2117,7 @@ Default: Same as the ``genome`` parameter.
 		try:
 			r = requests.post(url, data=data)
 		except Exception as e:
-			message = 'Variation Reporter. Variant: %s Could not access www.ncbi.nlm.nih.gov. Exception: %s' % (str(variant), str(exception))
+			message = 'Variation Reporter. Variant: %s Could not access www.ncbi.nlm.nih.gov. Exception: %s' % (str(variant), str(e))
 			logging.error(message)
 			self.current_fatal_error.append(message)
 			return None
@@ -2135,7 +2167,8 @@ Default: Same as the ``genome`` parameter.
 			self.current_fatal_error.append(message)
 			return None
 
-		Hgvs_g_index = headers.index('Hgvs_g')
+		#Hgvs_g_index = headers.index('Hgvs_g')
+		Hgvs_g_index = headers.index('Hgvs_g (RefSeqGene)')
 
 		all_records = [x.split('\t') for x in text.split('\n') if (len(x) > 10) and (not 'Submitted:' in x) and (x[0] != '#')]
 		all_hgvs_g = [x[Hgvs_g_index] for x in all_records]
@@ -2153,6 +2186,7 @@ Default: Same as the ``genome`` parameter.
 		all_hgvs_g = [y for y in [MutationInfo.biocommons_parse(x) for x in all_hgvs_g] if y]
 		if not len(all_hgvs_g):
 			message = 'Variation Reporter. Variant: %s. Could not parse any of the hgvs_g variants: %s with biocommons' % (str(variant), str(all_hgvs_g_report))
+
 
 		# Count
 		all_hgvs_g_count = {} 
