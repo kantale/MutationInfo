@@ -1254,7 +1254,15 @@ Default: Same as the ``genome`` parameter.
 			alignment_step = -1
 			direction = '-'
 		else:
-			raise Exception('WTF!')
+			# These are the same. Check the direction elsewhere 
+			if '>>>>>>>>>' in blat_record:
+				alignment_step = 1
+				direction = '+'
+			elif '<<<<<<<<' in blat_record:
+				alignment_step = -1
+				direction = '-'
+			else:
+				raise Exception('WTF!')
 
 		matching = get_matching(blat_record)
 

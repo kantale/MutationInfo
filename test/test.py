@@ -129,6 +129,14 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertIsNone(ret)
 
+    def test_BLAT(self):
+        '''
+        This is one in fifty possibility that alignment_start and alignment_end positions in _find_alignment_position_in_blat_result are the same.
+        '''
+        ret = mi.get_info('NC_000023.11:g.154532753_154532770delGGCCTTGCGCTCGTTCAG', method='BLAT')
+        print ret
+        self.assertEqual(remove_notes(ret), {'chrom': 'x', 'source': 'BLAT', 'genome': 'hg19', 'offset': 153780968, 'alt': '', 'ref': 'GGCCTTGCGCTCGTTCAG'})
+
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'
 
@@ -265,6 +273,7 @@ if __name__ == '__main__':
         * python test.py , to run all tests
         * python test.py TestMutationInfo.test_VARIATION_REPORTER , to run a specific test: http://stackoverflow.com/questions/15971735/running-single-test-from-unittest-testcase-via-command-line
         * python test.py TestMutationInfo.test_TRANSVAR
+        * python test.py TestMutationInfo.test_BLAT
     '''
 
     unittest.main()
