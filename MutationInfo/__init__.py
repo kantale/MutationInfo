@@ -566,6 +566,8 @@ Default: Same as the ``genome`` parameter.
 
 			logging.debug('RUNNING BLAT for %s' % (str(new_variant_mutalyzer)))
 			new_variant_snp_info = self.get_info_BLAT(new_variant_mutalyzer)
+			if new_variant_snp_info is None:
+				return None
 			ret =self._build_ret_dict(
 				new_variant_snp_info['chrom'],
 				new_variant_snp_info['offset'],
@@ -779,6 +781,8 @@ Default: Same as the ``genome`` parameter.
 
 		logging.info('Variant: %s . Blat alignment filename exists (or created)' % (variant))
 		human_genome_position, direction = self._find_alignment_position_in_blat_result(blat_alignment_filename, relative_pos, verbose=True)
+		if human_genome_position is None:
+			return None
 		logging.info('Variant: %s . Blat alignment position: %i, direction: %s' % (variant, human_genome_position, direction))
 
 		#Invert reference / alternative if sequence was located in negative strand 
@@ -1232,12 +1236,18 @@ Default: Same as the ``genome`` parameter.
 
 		blat_records = re.findall(r'[\d]* [acgt\.]* [\d]*\n[\<\>]+ [\|\ ]* [\<\>]+\n[\d]* [acgt\.]* [\d]*', blat_results)
 
+		found = False
 		for blat_index, blat_record in enumerate(blat_records):
 			fasta_start = get_pos(blat_record, 0)
 			fasta_end = get_pos(blat_record, 1)
 
 			if fasta_start <= pos <= fasta_end:
+				found = True
 				break
+
+		if not found:
+			logging.error("BLAT: The position {} was not found (did not match anywhere) in BLAT results.".format(pos))
+			return None, None
 
 		if verbose:
 			print blat_record
@@ -1967,7 +1977,7 @@ Default: Same as the ``genome`` parameter.
 				logging.error(message)
 				message = "This was effort {} from {}".format(ucsc_query_efforts, ucsc_query_efforts_MAX)
 				logging.error(message)
-				if ucsc_query_effors < ucsc_query_efforts_MAX:
+				if ucsc_query_efforts < ucsc_query_efforts_MAX:
 					logging.info("Resetting UCSC connection...")
 					self._setup_UCSC(**self.ucsc_options)
 				else:

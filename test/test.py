@@ -137,6 +137,13 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertEqual(remove_notes(ret), {'chrom': 'x', 'source': 'BLAT', 'genome': 'hg19', 'offset': 153780968, 'alt': '', 'ref': 'GGCCTTGCGCTCGTTCAG'})
 
+        '''
+        For this variant, although the BLAT is successfull, it fails for this particular location.
+        '''
+        ret = mi.get_info("NC_000023.11:g.154536022A>T", method="BLAT")
+        print ret
+        self.assertIsNone(ret)
+
     def test_GET_INFO_HGVS(self):
         print '--------GET INFO HGVS--------------------'
 
