@@ -9,7 +9,7 @@ if sys.version_info[:2] >= (3,0):
       print 'Sorry.. MutationInfo is a python 2 tool..'
       sys.exit(1)
 
-if sys.version_info[:2] < (2.7):
+if sys.version_info[:2] < (2,7):
       print 'Python 2.7 is required for MutationInfo'
       print 'Python version detected: ', str(sys.version_info)
       sys.exit(1)
