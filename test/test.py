@@ -84,6 +84,10 @@ class TestMutationInfo(unittest.TestCase):
         print ret
         self.assertEqual(ret, 'NT_005120.15:g.608362T>G')
 
+        ret = mi._search_mutalyzer('NT_005120.15(UGT1A1):c.1186delG')
+        print '->{}<-'.format(ret)
+        self.assertEqual(ret, 'NT_005120.15:g.609721del')
+
 
     def test_LOVD(self):
         print '--------LOVD------------------------'
@@ -274,6 +278,23 @@ class TestMutationInfo(unittest.TestCase):
         print info
         self.assertIsNone(info)
 
+    def test_PIPELINE(self):
+        print '---------TEST PIPELINE-----------------'
+
+        info = mi.get_info('NT_005120.15(UGT1A1):c.1186_1187insT')
+        print info
+        self.assertEqual(remove_notes(info), {'chrom': '2', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 234676967, 'alt': u'T', 'ref': ''})
+
+        info = mi.get_info('NT_005120.15(UGT1A1):c.1186delG')
+        print info
+        self.assertEqual(remove_notes(info), {'chrom': '2', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 234676967, 'alt': '', 'ref': 'G'})
+
+#    def test_INCIDENTS(self):
+#        ret = mi.get_info('NC_000023.11:g.154532753_154532770delGGCCTTGCGCTCGTTCAG', method='BLAT')
+#        print ret
+#        self.assertEqual(remove_notes(ret), {'chrom': 'x', 'source': 'BLAT', 'genome': 'hg19', 'offset': 153780968, 'alt': '', 'ref': 'GGCCTTGCGCTCGTTCAG'})
+
+
 if __name__ == '__main__':
     '''
     Run: 
@@ -281,6 +302,9 @@ if __name__ == '__main__':
         * python test.py TestMutationInfo.test_VARIATION_REPORTER , to run a specific test: http://stackoverflow.com/questions/15971735/running-single-test-from-unittest-testcase-via-command-line
         * python test.py TestMutationInfo.test_TRANSVAR
         * python test.py TestMutationInfo.test_BLAT
+        * python test.py TestMutationInfo.test_MUTALYZER
+        * python test.py TestMutationInfo.test_PIPELINE
+        * python test.py TestMutationInfo.test_INCIDENTS
     '''
 
     unittest.main()

@@ -33,19 +33,8 @@ except ImportError as e:
 
 import hgvs.parser as hgvs_biocommons_parser
 
-try:
-	import psycopg2 # In order to catch psycopg2.OperationalError 
-	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
-	import hgvs.variantmapper as hgvs_biocommons_variantmapper 
-
-except ImportError as e:
-
-	if 'sphinx' in sys.modules:
-		# Ignore this. These packages are not required for doc building.
-		# Credits to http://stackoverflow.com/questions/20843737/check-if-sphinx-doc-called-the-script for the tip.
-		pass 
-
-	elif 'Library not loaded: libssl.1.0.0.dylib' in str(e):
+def check_libssl(e):
+	if 'Library not loaded: libssl.1.0.0.dylib' in str(e):
 
 		print '='*10 + '==========' + '='*10
 		print ' '*10 + 'IMPORTANT:'
@@ -62,6 +51,26 @@ except ImportError as e:
 		print 'For more please check: http://stackoverflow.com/questions/27264574/import-psycopg2-library-not-loaded-libssl-1-0-0-dylib'
 		sys.exit(1)
 		#raise e
+
+	return False
+
+
+try:
+	import psycopg2 # In order to catch psycopg2.OperationalError 
+	import hgvs.dataproviders.uta as hgvs_biocommons_uta # http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
+	#import hgvs.variantmapper as hgvs_biocommons_variantmapper 
+	import hgvs.assemblymapper as hgvs_biocommons_assemblymapper 
+
+except ImportError as e:
+
+	if 'sphinx' in sys.modules:
+		# Ignore this. These packages are not required for doc building.
+		# Credits to http://stackoverflow.com/questions/20843737/check-if-sphinx-doc-called-the-script for the tip.
+		pass
+
+	elif check_libssl(str(e)):
+		pass
+
 	else:
 		# We do not know what caused this
 		raise e
@@ -288,6 +297,10 @@ Default: Same as the ``genome`` parameter.
 		except ImportError as e:
 			if 'No module named MySQLdb' in str(e):
 				logging.error('Please refer to https://github.com/kantale/MutationInfo/issues/7 in order to resolve this issue')
+
+			elif check_libssl(str(e)):
+				pass
+
 			raise e
 
 
@@ -302,9 +315,10 @@ Default: Same as the ``genome`` parameter.
 		self.biocommons_hdp = hgvs_biocommons_uta.connect()
 
 		# http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
-		self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
-		self.biocommons_vm_blat = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='blat')
-		self.biocommons_vm_genewise = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='genewise')
+		#self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
+		self.biocommons_vm_splign = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='splign')
+		self.biocommons_vm_blat = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='blat')
+		self.biocommons_vm_genewise = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='genewise')
 
 
 	@staticmethod
@@ -731,6 +745,7 @@ Default: Same as the ``genome`` parameter.
 		logging.info('Variant: %s . Reference on chunk: %s   Reference on fasta: %s  Reference at variant position +/- 1: %s' % (variant, fasta_chunk[relative_pos-1], fasta[hgvs_position-1], fasta_chunk[relative_pos-2:relative_pos+1]))
 
 		assert fasta_chunk[relative_pos-1] == fasta[hgvs_position-1]
+		reference_on_fasta = fasta[hgvs_position-1]
 
 		#Now that we have a fair sample of the sample 
 		# We can blat it!
@@ -784,6 +799,11 @@ Default: Same as the ``genome`` parameter.
 		if human_genome_position is None:
 			return None
 		logging.info('Variant: %s . Blat alignment position: %i, direction: %s' % (variant, human_genome_position, direction))
+
+		if hgvs_reference == '' and hgvs_alternative is None:
+			# Assume one deletion (NT_005120.15:g.609721del)
+			logging.info('Variant: %s . The reference of the deletion is not present on the variant! ASSUMING Reference: %s' % (variant, reference_on_fasta))
+			hgvs_reference = reference_on_fasta
 
 		#Invert reference / alternative if sequence was located in negative strand 
 		if direction == '-':

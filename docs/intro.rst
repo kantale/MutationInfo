@@ -59,6 +59,7 @@ To install MutationInfo, download the latest release from https://github.com/kan
 
 .. code-block:: bash
 
+  pip install --upgrade setuptools
   python setup.py install
 
 
