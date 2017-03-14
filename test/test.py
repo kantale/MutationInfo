@@ -290,10 +290,9 @@ class TestMutationInfo(unittest.TestCase):
         self.assertEqual(remove_notes(info), {'chrom': '2', 'source': 'Mutalyzer', 'genome': 'hg19', 'offset': 234676967, 'alt': '', 'ref': 'G'})
 
 #    def test_INCIDENTS(self):
-#        ret = mi.get_info('NC_000023.11:g.154532753_154532770delGGCCTTGCGCTCGTTCAG', method='BLAT')
-#        print ret
-#        self.assertEqual(remove_notes(ret), {'chrom': 'x', 'source': 'BLAT', 'genome': 'hg19', 'offset': 153780968, 'alt': '', 'ref': 'GGCCTTGCGCTCGTTCAG'})
-
+#        '''
+#        Use to test known problems
+#        '''
 
 if __name__ == '__main__':
     '''

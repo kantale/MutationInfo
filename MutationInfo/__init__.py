@@ -315,7 +315,7 @@ Default: Same as the ``genome`` parameter.
 		self.biocommons_hdp = hgvs_biocommons_uta.connect()
 
 		# http://hgvs.readthedocs.org/en/latest/examples/manuscript-example.html#project-genomic-variant-to-a-new-transcript 
-		#self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign')
+		#self.biocommons_vm_splign = hgvs_biocommons_variantmapper.EasyVariantMapper(self.biocommons_hdp, primary_assembly=self.genome_GrCh, alt_aln_method='splign') # for biocommons hgvs < 0.5
 		self.biocommons_vm_splign = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='splign')
 		self.biocommons_vm_blat = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='blat')
 		self.biocommons_vm_genewise = hgvs_biocommons_assemblymapper.AssemblyMapper(self.biocommons_hdp, assembly_name=self.genome_GrCh, alt_aln_method='genewise')
@@ -459,6 +459,9 @@ Default: Same as the ``genome`` parameter.
 
 
 	def get_info_biocommons(self, variant):
+		'''
+		TODO: Replace "print" with logging.info
+		'''
 		hgvs = MutationInfo.biocommons_parse(variant)
 		if hgvs is None:
 			print 'COULD NOT PARSE VARIANT WITH BIOCOMMONS'
@@ -558,7 +561,7 @@ Default: Same as the ``genome`` parameter.
 		if new_variant is None:
 			logging.debug('Variant: %s MUTALYZER POSITION CONVERTER FAILED' % (str(variant)))
 			logging.debug('Variant: %s TRYING MAIN MUTALYZER.. GENE=%s' % (str(variant), str(gene)))
-			new_variant_mutalyzer = self._search_mutalyzer(variant, gene=gene)
+			new_variant_mutalyzer, mutalyzer_reference, mutalyzer_alternative = self._search_mutalyzer(variant, gene=gene)
 			logging.debug('Variant: %s MAIN MUTALYZER REPORTED NEW VARIANT: %s' % (str(variant), str(new_variant_mutalyzer)))
 			if new_variant_mutalyzer is None:
 				logging.error('Variant: %s MAIN MUTALYZER FAILED' % (str(variant)))
@@ -579,7 +582,7 @@ Default: Same as the ``genome`` parameter.
 
 
 			logging.debug('RUNNING BLAT for %s' % (str(new_variant_mutalyzer)))
-			new_variant_snp_info = self.get_info_BLAT(new_variant_mutalyzer)
+			new_variant_snp_info = self.get_info_BLAT(new_variant_mutalyzer, mutalyzer_reference=mutalyzer_reference, mutalyzer_alternative=mutalyzer_alternative)
 			if new_variant_snp_info is None:
 				return None
 			ret =self._build_ret_dict(
@@ -800,10 +803,14 @@ Default: Same as the ``genome`` parameter.
 			return None
 		logging.info('Variant: %s . Blat alignment position: %i, direction: %s' % (variant, human_genome_position, direction))
 
-		if hgvs_reference == '' and hgvs_alternative is None:
+		if (hgvs_reference == '' or hgvs_reference is None) and (hgvs_alternative == '' or hgvs_alternative is None):
 			# Assume one deletion (NT_005120.15:g.609721del)
-			logging.info('Variant: %s . The reference of the deletion is not present on the variant! ASSUMING Reference: %s' % (variant, reference_on_fasta))
-			hgvs_reference = reference_on_fasta
+			if 'mutalyzer_reference' in kwargs:
+				mutalyzer_reference = kwargs['mutalyzer_reference']
+				mutalyzer_alternative = kwargs['mutalyzer_alternative']
+				logging.info('Variant: %s . The reference/aternative is not present on the variant! Using ref/alt info from mutalyzer: %s/%s' % (variant, mutalyzer_reference, mutalyzer_alternative))
+				hgvs_reference = mutalyzer_reference
+				hgvs_alternative = mutalyzer_alternative
 
 		#Invert reference / alternative if sequence was located in negative strand 
 		if direction == '-':
@@ -969,7 +976,7 @@ Default: Same as the ``genome`` parameter.
 			logging.warning('Biocommons failed to parse variant: %s .' % (variant))
 
 			logging.info('Variant: %s . Trying to reparse with Mutalyzer and get the genomic description' % (variant))
-			new_variant = self._search_mutalyzer(variant, **kwargs)
+			new_variant, mutalyzer_reference, mutalyzer_alternative = self._search_mutalyzer(variant, **kwargs)
 			if new_variant is None:
 				logging.error('Variant: %s . Mutalyzer failed. Nothing left to do.. (could not parse variant)' % (variant))
 				#print self._search_VEP(variant)
@@ -1866,6 +1873,8 @@ Default: Same as the ``genome`` parameter.
 		Warning: It removes reference information in indels
 		For NG_008377.1:g.6502_6507delCTCTCT it returns NG_008377.1:g.6502_6507del . 
 		https://mutalyzer.nl/name-checker?description=NG_008377.1%3Ag.6502_6507delCTCTCT
+
+		EDIT: RESOLVED IN https://github.com/kantale/MutationInfo/issues/20
 		'''
 
 		#Check if gene is defined
@@ -1914,10 +1923,18 @@ Default: Same as the ``genome`` parameter.
 
 		logging.info('Variant: %s . Mutalyzer file: %s exists (or created). Parsing..' % (variant, variant_filename))
 		with open(variant_filename) as f:
-			soup = BeautifulSoup(f)
+			soup = BeautifulSoup(f, "html.parser")
 
 		description = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[0].text
 		logging.info('Variant: %s . Found description: %s' % (variant, description))
+
+		#Get reference and alternative from mutalyzer
+		mutalyzer_seqs = str(soup.find_all(class_='name-checker-left-column')[0].find_all('pre')[0]).replace('<pre>', '').replace('</pre>', '').replace('<br>', '!@#').replace('</br>', '!@#').replace('<br/>', '!@#').split('!@#')
+		mutalyzer_seqs = [x for x in mutalyzer_seqs if x]
+		mutalyzer_reference = re.search(r' ([ACGT-]+) ', mutalyzer_seqs[0]).group(1).replace('-', '').strip()
+		mutalyzer_alternative = re.search(r' ([ACGT-]+) ', mutalyzer_seqs[1]).group(1).replace('-', '').strip()
+
+		logging.info('Variant: %s Mutalyzer reference: %s    Mutalyzer alternative: %s' % (variant, mutalyzer_reference, mutalyzer_alternative))
 
 		#new_variant_url = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code.a.get('href')
 		bs_results = soup.find_all(class_='name-checker-left-column')[0].find_all('p')[1].code
@@ -1934,7 +1951,7 @@ Default: Same as the ``genome`` parameter.
 		new_variant = urllib.unquote(new_variant)
 		logging.info('Variant: %s . Found Genomic description: %s' % (variant, new_variant))
 
-		return new_variant
+		return new_variant, mutalyzer_reference, mutalyzer_alternative
 
 	def search_mutalyzer_position_converter(self, variant):
 		'''
@@ -2602,7 +2619,7 @@ class ProgressBar:
 		self.prog_bar = self.msg + '[' + self.fill_char * num_hashes + ' ' * (all_full - num_hashes) + ']'
 		pct_place = (len(self.prog_bar) / 2) - len(str(percent_done))
 		pct_string = '%d%%' % percent_done
-		self.prog_bar = self.prog_bar[0:pct_place] +             (pct_string + self.prog_bar[pct_place + len(pct_string):])
+		self.prog_bar = self.prog_bar[0:pct_place] + (pct_string + self.prog_bar[pct_place + len(pct_string):])
 
 	def __str__(self):
 		return str(self.prog_bar)
