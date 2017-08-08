@@ -1,5 +1,3 @@
-# http://139.91.70.73:4444/ 
-# http://139.91.70.73:4444/MutationInfo/
 
 ### HOW TO BUILD:
 * ```sudo docker build -t mutationinfo . ```
