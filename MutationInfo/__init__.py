@@ -1792,9 +1792,10 @@ Default: Same as the ``genome`` parameter.
 			else:
 				refseq_mrna = search.group(1)
 				if refseq_mrna in ret:
-					message = 'mRNA Refseq entry %s is appeared in more than one genes: %s, %s' % (refseq_mrna, ret[refseq_mrna], _id)
-					logging.error(message)
-					raise MutationInfoException('Entr')
+					if _id != ret[refseq_mrna][0]:
+						message = 'mRNA Refseq entry %s is present in more than one genes: %s, %s' % (refseq_mrna, ret[refseq_mrna], _id)
+						logging.error(message)
+						raise MutationInfoException('Entr')
 				ret[refseq_mrna] = [_id, refseq_build]
 
 		self.lovd_transcript_dict = ret
