@@ -1911,7 +1911,7 @@ Default: Same as the ``genome`` parameter.
 
 			#Check for errors
 			with open(variant_filename) as f:
-				soup = BeautifulSoup(f)
+				soup = BeautifulSoup(f, features="html.parser")
 
 			alert_danger = soup.find_all(class_="alert alert-danger")
 			if len(alert_danger) > 0:
