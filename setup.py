@@ -95,7 +95,7 @@ setup(name='MutationInfo',
       # http://stackoverflow.com/questions/3472430/how-can-i-make-setuptools-install-a-package-thats-not-on-pypi 
       dependency_links=[
             #'https://github.com/counsyl/hgvs/tarball/master#egg=pyhgvs-2.0.0',
-            'https://github.com/kantale/hgvs-1##egg=pyhgvs-2.0.0',
+            'https://github.com/kantale/hgvs-1/tarball/master#egg=pyhgvs-2.0.0',
             'https://github.com/kantale/pyVEP/tarball/master#egg=pyVEP-2.0.0',
       ],
       packages=['MutationInfo', 'biopython_mapper'],

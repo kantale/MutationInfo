@@ -191,6 +191,7 @@ Default: Same as the ``genome`` parameter.
 	lovd_variants_url = 'http://databases.lovd.nl/shared/api/rest.php/variants/{gene}'
 
 	mutalyzer_url = 'https://mutalyzer.nl/name-checker?description={variant}'
+	hgnc_url = 'ftp://ftp.ebi.ac.uk/pub/databases/genenames/new/json/hgnc_complete_set.json'
 
 	def __init__(self, local_directory=None, email=None, genome='hg19', dbsnp_version='snp146', **kwargs):
 	#def __init__(self, local_directory=None, email=None, genome='hg38', dbsnp_version='snp146'):
@@ -275,6 +276,27 @@ Default: Same as the ``genome`` parameter.
 			self.ucsc_options['ucsc_genome'] = kwargs['ucsc_genome']
 
 		self._setup_UCSC(**self.ucsc_options)
+
+		# Save HGNC file
+		# Create a set of all HGNC gene names and all HGNC gene names aliases. Convert everything to lower case
+		self.hgnc_directory = os.path.join(self.local_directory, 'hgnc')
+		logging.info('HGNC Directory: %s' % self.hgnc_directory)
+		self.hgnc_filename = os.path.join(self.hgnc_directory, 'hgnc_complete_set.json') # https://www.genenames.org/download/statistics-and-files/
+		self.hgnc_genes_json_filename = os.path.join(self.hgnc_directory, 'hgnc_genes.json')
+		logging.info('HGNC Filename: %s' % self.hgnc_filename)
+		Utils.mkdir_p(self.hgnc_directory)
+		if not Utils.file_exists(self.hgnc_filename):
+			Utils.download(self.hgnc_url, self.hgnc_filename)
+		if not Utils.file_exists(self.hgnc_genes_json_filename):
+			with open(self.hgnc_filename) as f:
+				data = json.load(f)
+			set_1 = {x['symbol'].lower() for x in data['response']['docs']}
+			set_2 = {y.lower() for x in data['response']['docs'] for y in x.get('alias_symbol', [])}
+			hgnc_genes = list(set_1.union(set_2))
+			with open(self.hgnc_genes_json_filename, 'w') as f2:
+				json.dump(hgnc_genes, f2)
+		with open(self.hgnc_genes_json_filename) as f:
+			self.hgnc_genes = set(json.load(f))
 
 		#Save properties file
 		Utils.save_json_filenane(self._properties_file, self.properties)
@@ -632,7 +654,7 @@ Default: Same as the ``genome`` parameter.
 			logging.warning('***SERIOUS*** strand of variant has not been checked!')
 			return self._build_ret_dict(lovd_chrom, lovd_pos_1, hgvs_reference, hgvs_alternative, lovd_genome, 'LOVD')
 
-		print 'LOVD ???? 4498'
+		logging.error( 'LOVD ???? 4498')
 		return None
 
 	def get_info_VARIATION_REPORTER(self, variant):
@@ -640,6 +662,25 @@ Default: Same as the ``genome`` parameter.
 
 	def get_info_TRANSVAR(self, variant):
 		return self._search_transvar(variant)
+
+	def get_info_gene_name(self, variant):
+		ret_transvar = self._search_transvar(variant)
+		ret_vep_post = self._search_vep_post(variant)
+
+		if not ret_transvar and ret_vep_post:
+			return ret_vep_post
+
+		if ret_transvar and not ret_vep_post:
+			return ret_transvar
+
+		if ret_transvar and ret_vep_post:
+			if ret_transvar['chrom'] != ret_vep_post['chrom'] and ret_transvar['offset'] != ret_vep_post['offset']:
+				logging.warning('SERIOUS! Transvar and VEP returned different postions')
+			return ret_transvar
+
+		logging.debug('Variant: %s Both TransVar and VEP failed' % variant)
+		return None
+
 
 	def get_info_BLAT(self, variant=None, hgvs_transcript=None, hgvs_type=None, hgvs_position=None, hgvs_reference=None, hgvs_alternative=None, **kwargs):
 		#Parse with biocommons
@@ -959,6 +1000,17 @@ Default: Same as the ``genome`` parameter.
 				return ret
 
 			return ret
+
+		#Does it contain a gene name?
+		match = re.match(r'(.+?):', variant) # XYZ:...
+		if match:
+			variant_gene_name = match.group(1).strip()
+			if variant_gene_name.lower() in self.hgnc_genes:
+				logging.debug('Located HGNC gene name: %s in variant: %s' % (variant_gene_name, variant))
+				ret = self.get_info_gene_name(variant.strip())
+				if ret:
+					return ret
+		
 
 		#Is this an hgvs variant?
 		hgvs = MutationInfo.biocommons_parse(variant)
@@ -2151,6 +2203,60 @@ Default: Same as the ``genome`` parameter.
 
 		return self._build_ret_dict(*arguments)
 
+	def _search_vep_post(self, hgvs):
+		server = "https://rest.ensembl.org"
+		ext = "/vep/human/hgvs"
+		headers={ "Content-Type" : "application/json", "Accept" : "application/json"}
+    
+    
+		data = json.dumps({"hgvs_notations": [hgvs]})
+
+		logging.debug('Variant: %s . Accessing VEP via POST..' % hgvs)
+		r = requests.post(server+ext, headers=headers, data=data)
+		logging.debug('Variant: %s . VEP-POST returned' % hgvs)
+ 
+		if not r.ok:
+			try:
+				r.raise_for_status()
+			except Exception as e:
+				logging.error('Library requests failed: %s' % (str(e)))
+				return None
+ 
+		vep = r.json()
+		if not type(vep) is list:
+			logging.error('Variants: %s . VEP did not return a list' % hgvs)
+			return None
+
+		if not len(vep) == 1:
+			logging.error('Variant: %s . VEP returned more than one items' % hgvs)
+			return None
+
+
+		#transcripts = [x['gene_id'] for x in vep[0]['transcript_consequences'] if 'gene_id' in x]
+		#transcripts = set(transcripts)
+		#print (transcripts)
+    
+		ref_alt =  vep[0]['allele_string'].split('/')
+		ref = ref_alt[0].replace('-', '')
+		alt = ref_alt[1].replace('-', '')
+		strand =  vep[0]['strand']
+
+ 		if strand == -1:
+			ref = self.inverse(ref)
+			alt = self.inverse(alt)
+    
+		ret2 = [
+			vep[0]['seq_region_name'], # Chromosome
+			vep[0]['start'], # Offset 
+			ref, # ref
+			alt, # alt,
+			'hg38',
+			'VEP',
+
+		]
+		#print (ret2)
+		return self._build_ret_dict(*ret2)
+
 	def _search_variation_reporter(self, variant):
 		'''
 		https://www.ncbi.nlm.nih.gov/variation/tools/reporter/docs/api/webservice
@@ -2258,7 +2364,10 @@ Default: Same as the ``genome`` parameter.
 
 	def _search_transvar(self, variant):
 		'''
-		Experimental !!!
+		RHAG:c.236G>A --> ['6', 49619284, 'C', 'T', 'hg38', 'transvar'] 
+		RHAG:c.236_237insA --> ['6', 49619283, '', 'T', 'hg38', 'transvar']
+		RHAG:c.236delG --> ['6', 49619284, 'C', '', 'hg38', 'transvar']
+		RHAG:c.236_237delGT --> ['6', 49619283, 'AC', '', 'hg38', 'transvar']
 
 		Resources: 
 		    * http://www.transvar.info/transvar_user/annotations/ 
@@ -2289,8 +2398,8 @@ Default: Same as the ``genome`` parameter.
 			return None
 
 		
-		command = "transvar %s -i %s  --ccds  --ucsc --ensembl --refseq --aceview --gencode" % (t_anno, variant)
-		print command
+		command = "transvar %s -i %s  --ccds  --ucsc --ensembl --refseq --aceview --gencode  --refversion hg38" % (t_anno, variant)
+		logging.debug('Transvar Command: %s' % command)
 		p = subprocess.Popen(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		out, err = p.communicate()
 
@@ -2330,12 +2439,45 @@ Default: Same as the ``genome`` parameter.
 			return None
 
 		to_ret = max([(v, k) for k, v in hgvs_dict.iteritems()])[1]
-		message = 'Transvar conerted %s to %s' % (str(variant), to_ret)
+		message = 'Transvar converted %s to %s' % (str(variant), to_ret)
 		logging.debug(message)
 		self.current_fatal_error.append(message)
 
-		chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
-		return self._build_ret_dict(chrom, offset, ref, alt,'hg19', 'counsyl_hgvs_to_vcf', ' / '.join(self.current_fatal_error))
+		# chr6:g.49619284C>T <-- RHAG:c.236G>A
+		# chr6:g.49619283_49619284insT <-- RHAG:c.236_237insA
+		# chr6:g.49619284delC <-- RHAG:c.236delG 
+		# chr6:g.49619283_49619284delAC <-- RHAG:c.236_237delGT
+		s = re.search(r'chr(?P<chromosome>.+?):g\.(?P<start>[\d]+)(?P<end>_[\d]+)?((?P<SNV>[ACGT]+>[ACGT]+)|(?P<INS>ins[ACGT]+)|(?P<DEL>del[ACGT]+))', to_ret)
+		if not s:
+			logging.debug('Could not extract location from Transvar output: %s' % (to_ret))
+			return None
+
+		s_dict = s.groupdict()
+		#print (s_dict)
+		chromosome = s_dict['chromosome']
+		offset = int(s_dict['start'])
+
+		if s_dict['SNV']:
+			ref, alt = s_dict['SNV'].split('>')
+		elif s_dict['INS']:
+			ref = ''
+			alt = s_dict['INS'].replace('ins', '')
+		elif s_dict['DEL']:
+			ref = s_dict['DEL'].replace('del', '')
+			alt = ''
+		else:
+			logging.error('error 619')
+			return None
+
+
+		elements = [chromosome, offset, ref, alt, 'hg38', 'transvar']
+		#print ('%s --> %s' % (variant, elements))
+		return self._build_ret_dict(*elements)
+
+		#chrom, offset, ref, alt = self.counsyl_hgvs.hgvs_to_vcf(variant)
+		#return self._build_ret_dict(chrom, offset, ref, alt,'hg19', 'counsyl_hgvs_to_vcf', ' / '.join(self.current_fatal_error))
+
+
 
 	def _build_ret_dict(self, *args):
 
@@ -2569,6 +2711,25 @@ class Utils(object):
 			Utils.mkdir_p(directory)
 
 		return directory
+
+	@staticmethod
+	def execute(command):
+		'''
+		Execute a command line and fetch the results
+		'''
+		process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		# wait for the process to terminate
+		out, err = process.communicate()
+		errcode = process.returncode
+		out = out.decode('utf-8')
+		err = err.decode('utf-8')
+    		#print ('STDOUT:')
+		#print (out)
+		#print ('ERR:')
+		#print (err)
+		#print ('RETURN CODE:', errcode)
+		return {'out': out, 'err': err, 'code': errcode}
 
 
 class ProgressBar:
