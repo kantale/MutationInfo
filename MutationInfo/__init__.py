@@ -583,7 +583,12 @@ Default: Same as the ``genome`` parameter.
 		if new_variant is None:
 			logging.debug('Variant: %s MUTALYZER POSITION CONVERTER FAILED' % (str(variant)))
 			logging.debug('Variant: %s TRYING MAIN MUTALYZER.. GENE=%s' % (str(variant), str(gene)))
-			new_variant_mutalyzer, mutalyzer_reference, mutalyzer_alternative = self._search_mutalyzer(variant, gene=gene)
+			search_mutalyzer_ret = self._search_mutalyzer(variant, gene=gene)
+			if search_mutalyzer_ret is None:
+				logging.error('Variant: %s MAIN MUTALYZER FAILED' % (str(variant)))
+				return {'notes': ' / '.join(self.current_fatal_error)}
+
+			new_variant_mutalyzer, mutalyzer_reference, mutalyzer_alternative = search_mutalyzer_ret
 			logging.debug('Variant: %s MAIN MUTALYZER REPORTED NEW VARIANT: %s' % (str(variant), str(new_variant_mutalyzer)))
 			if new_variant_mutalyzer is None:
 				logging.error('Variant: %s MAIN MUTALYZER FAILED' % (str(variant)))
@@ -1008,6 +1013,15 @@ Default: Same as the ``genome`` parameter.
 			if variant_gene_name.lower() in self.hgnc_genes:
 				logging.debug('Located HGNC gene name: %s in variant: %s' % (variant_gene_name, variant))
 				ret = self.get_info_gene_name(variant.strip())
+				if ret:
+					return ret
+
+			# Is this an Ensembl transcript?
+			# Example: ENST00000375549.7:c.204C>T 
+			match = re.search(r'ENST[\d\.]+', variant_gene_name)
+			if match:
+				logging.debug('Located an Ensembl transcript: %s in variant: %s' % (variant_gene_name, variant))
+				ret = self._search_vep_post(variant)
 				if ret:
 					return ret
 		
@@ -2029,7 +2043,7 @@ Default: Same as the ``genome`` parameter.
 				Utils.download(variant_url, variant_filename)
 
 			with open(variant_filename) as f:
-				soup = BeautifulSoup(f)
+				soup = BeautifulSoup(f, features="html.parser")
 
 			#Check for errors
 			if len(soup.find_all(class_ = 'alert-danger')) > 0:
