@@ -1,5 +1,7 @@
 [![DOI](https://zenodo.org/badge/45920824.svg)](https://zenodo.org/badge/latestdoi/45920824)
 
+**WARNING: MutationInfo is based in outdated packages ([read more](https://github.com/kantale/MutationInfo/issues/22)) and its development has been stalled. Some thoughts on a second and redesigned version exist. Stay tuned!**  
+
 # MutationInfo
 
 MutationInfo is a python package to extract the position, the reference and the alternative sequence of a genomic variant. It accepts variants in [dbSNP](http://www.ncbi.nlm.nih.gov/SNP/) rs format or in [HGVS](http://www.hgvs.org/mutnomen/) format. 
